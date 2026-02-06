@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Secrets & Config
+.env
+*.json
+# D 드라이브 키 경로는 코드에 있지만, 만약 복사해올 경우를 대비
+google_vertex_key.json
+
+# Research Artifacts
+court_logs/
+oracle_views/
