@@ -38,9 +38,21 @@ class VLMAgent(ABC):
     def generate_response(self, prompt: str, image_path: Optional[str] = None) -> str:
         """Helper to generate content from Gemini."""
         try:
-            # TODO: Add image handling if image_path is provided
-            # For now, text-only or text-heavy prompts
-            response = self.model.generate_content(prompt)
+            from vertexai.generative_models import Part
+            
+            contents = [prompt]
+            if image_path:
+                with open(image_path, "rb") as f:
+                    image_data = f.read()
+                # Determine mime type based on extension
+                mime_type = "image/jpeg" # Default
+                if image_path.lower().endswith(".png"):
+                    mime_type = "image/png"
+                
+                image_part = Part.from_data(data=image_data, mime_type=mime_type)
+                contents.append(image_part)
+
+            response = self.model.generate_content(contents)
             return response.text
         except Exception as e:
             return f"Error generating response: {e}"

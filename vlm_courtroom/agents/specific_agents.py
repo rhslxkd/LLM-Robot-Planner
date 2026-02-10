@@ -5,29 +5,51 @@ from typing import List, Dict, Any
 from vlm_courtroom.agents.base_agent import VLMAgent, Message
 
 class CoordinateAgent(VLMAgent):
-    def __init__(self, name="CoordinateAgent"):
+    def __init__(self, name="CoordinateAgent", reset_db=False):
         super().__init__(name, "Coordinate Generator", model_role="COORDINATE")
         # Initialize ChromaDB (Persistent storage)
         self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
+        
+        if reset_db:
+            try:
+                self.chroma_client.delete_collection("scene_coordinates")
+                print(f"[{self.name}] 🗑️ Existing VectorDB collection deleted (Reset).")
+            except Exception:
+                pass # Collection might not exist
+
         self.collection = self.chroma_client.get_or_create_collection(name="scene_coordinates")
 
     def process(self, context: Dict[str, Any]) -> Message:
         print(f"[{self.name}] Analyzing image and generating coordinates...")
         
-        # In a real scenario, we'd pass the image to the model.
-        # For now, we simulate the prompt or use a text description if no image is loaded.
+        image_path = context.get('image_path')
         image_description = context.get('image_description', 'A scene with obstacles.')
         
         prompt = f"""
         You are a robot navigation assistant. 
-        Analyze the scene: {image_description}
+        Analyze the scene (image or description provided): {image_description}
         Identify obstacles (e.g., puddles, cars).
-        Generate 10 sequential (x, y) coordinates for a valid path avoiding obstacles.
-        Return ONLY a JSON list of dictionaries with 'x' and 'y' keys.
+        
+        Task:
+        1. Analyze the scene and Explain your path planning logic.
+        2. Generate 10 sequential (x, y) coordinates for a valid path avoiding obstacles.
+        
+        Output Format:
+        ## Scene Analysis
+        (Explain obstacles and safe zones)
+        
+        ## Path Strategy
+        (Explain why you chose this path)
+        
+        ## Coordinates
+        (Return the JSON list here)
         Example: [{{"x": 1, "y": 2}}, {{"x": 3, "y": 4}}]
+
+        Please respond in Korean.
         """
         
-        response_text = self.generate_response(prompt)
+        # Pass image_path if available
+        response_text = self.generate_response(prompt, image_path=image_path)
         
         # Parse JSON from response (simple cleanup)
         try:
@@ -69,6 +91,8 @@ class ProsecutorAgent(VLMAgent):
         1. One strong Opinion (Critical).
         2. Three Reasons (Evidence based on safety).
         Format clearly.
+
+        Please respond in Korean.
         """
         
         response_text = self.generate_response(prompt)
@@ -92,6 +116,8 @@ class DefenseAttorneyAgent(VLMAgent):
         1. One strong Opinion (Supportive).
         2. Three Reasons (Efficiency, feasibility).
         Format clearly.
+
+        Please respond in Korean.
         """
         
         response_text = self.generate_response(prompt)
@@ -118,6 +144,8 @@ class JudgeAgent(VLMAgent):
         1. State your Verdict and Logic.
         2. Provide the FINAL list of 10 coordinates (x, y) for the robot.
         3. Explain how these points should be connected (mention Spline).
+
+        Please respond in Korean.
         """
         
         response_text = self.generate_response(prompt)
