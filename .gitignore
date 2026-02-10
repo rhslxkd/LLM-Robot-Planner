@@ -13,3 +13,10 @@ google_vertex_key.json
 # Research Artifacts
 court_logs/
 oracle_views/
+
+chroma_db/
+__pycache__/
+*.pyc
+.env
+# 만약 키 파일도 프로젝트 안에 있다면 반드시 추가!
+*.json
