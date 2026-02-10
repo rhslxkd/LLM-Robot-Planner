@@ -14,9 +14,15 @@ google_vertex_key.json
 court_logs/
 oracle_views/
 
+# Project Generated Files
 chroma_db/
+vlm_courtroom/outputs/
+vlm_courtroom/inputs/
+vlm_courtroom/chroma_db/
+*.png
+
 __pycache__/
 *.pyc
 .env
-# 만약 키 파일도 프로젝트 안에 있다면 반드시 추가!
 *.json
+.DS_Store
