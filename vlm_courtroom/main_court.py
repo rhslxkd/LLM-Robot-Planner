@@ -40,16 +40,17 @@ def main():
         scenario = """
         중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야. 
         그 상황속 사진에 보이듯이, 앞에 빨간 상자인 장애물이 있어, 
-        이 사진속 장애물을 피할 수 있도록 10개의 좌표를 제시해줘.
+        이 사진속 장애물을 피해서 앞으로 5m 이동할 수 있도록 10개의 좌표를 제시해줘.
+        반드시 상자를 피해가야해
         """
         
         if image_path:
             print(f"📸 Analying Image: {image_path}")
-            # Manual Calibration for 'brax (1).png'
-            # Robot Position (Go2): ~ (950, 550)
-            # Scale: Go2 Body Length ~ 0.7m. In image ~ 200px? Let's guess 300px/m for now.
-            robot_pos = (950, 550) 
-            scale = 300.0
+            # Image size: 1263x1080. Robot is perfectly centered.
+            # New calibrated robot_pos: (631, 540)
+            # New scale: 150.0 (Making 1m represent fewer pixels, thus AI plans longer jumps)
+            robot_pos = (631, 540) 
+            scale = 150.0 # 스케일을 낮춰서 AI가 더 시원시원한 경로(m)를 짜게 유도한다.
         else:
             print(f"Scenario Description: {scenario}")
             robot_pos = None

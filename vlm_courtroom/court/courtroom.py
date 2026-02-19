@@ -60,12 +60,29 @@ class VLMCourt:
             import re
 
             # Extract JSON coordinates from verdict
-            json_match = re.search(r'\[.*\]', verdict_text, re.DOTALL)
+            # Try to find JSON block first (```json ... ```)
+            json_match = re.search(r'```json\s*(\[.*?\])\s*```', verdict_text, re.DOTALL)
             if not json_match:
-                print("⚠️ Could not find coordinate JSON in verdict for visualization.")
+                # Fallback: Try to find any list-like structure
+                json_match = re.search(r'\[\s*{.*?}\s*(?:,\s*{.*?}\s*)*\]', verdict_text, re.DOTALL)
+
+            if not json_match:
+                print(f"⚠️ Could not find coordinate JSON in verdict. Raw verdict:\n{verdict_text}")
                 return
 
-            coordinates = json.loads(json_match.group(0))
+            json_str = json_match.group(1) if json_match.groups() else json_match.group(0)
+            
+            # Clean up common LLM JSON errors
+            # 1. Replace single quotes with double quotes (if they look like key/value quotes)
+            json_str = re.sub(r"'([a-zA-Z0-9_]+)'\s*:", r'"\1":', json_str) # keys
+            json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str) # string values
+            
+            try:
+                coordinates = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON Parsing failed: {e}")
+                print(f"Raw extracted string: {json_str}")
+                return
             
             # Load image
             img = mpimg.imread(image_path)
@@ -133,7 +150,11 @@ class VLMCourt:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
             # 1. Manage Input File (Copy to project inputs directory)
-            project_input_dir = os.path.join(os.getcwd(), "vlm_courtroom", "inputs")
+            # Determine project root based on this file's location
+            current_file_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_file_dir)
+            
+            project_input_dir = os.path.join(project_root, "inputs")
             os.makedirs(project_input_dir, exist_ok=True)
             
             target_input_path = os.path.join(project_input_dir, input_filename)
@@ -146,7 +167,12 @@ class VLMCourt:
                 print(f"📂 Input image is already in project inputs: {target_input_path}")
             
             # 2. Save Result to Project Outputs Directory (ONLY)
-            project_output_dir = os.path.join(os.getcwd(), "vlm_courtroom", "outputs")
+            # Determine project root based on this file's location: .../vlm_courtroom/court/courtroom.py
+            # We want .../vlm_courtroom/outputs
+            current_file_dir = os.path.dirname(os.path.abspath(__file__)) # .../vlm_courtroom/court
+            project_root = os.path.dirname(current_file_dir) # .../vlm_courtroom
+            
+            project_output_dir = os.path.join(project_root, "outputs")
             os.makedirs(project_output_dir, exist_ok=True)
             
             output_filename = f"{filename_no_ext}_verdict_{timestamp}{ext}"

@@ -29,6 +29,10 @@ class CoordinateAgent(VLMAgent):
         You are a robot navigation assistant. 
         Analyze the scene (image or description provided): {image_description}
         Identify obstacles (e.g., puddles, cars).
+        [Robot Physical Profile: Unitree Go2]
+        - Body Length: 0.7m / Body Width: 0.31m
+        - Minimum Step Length: ~0.3m
+        - Optimal Waypoint Interval: 0.5m - 1.0m (to ensure smooth gait)
         
         Task:
         1. Analyze the scene and Explain your path planning logic.
@@ -145,7 +149,13 @@ class JudgeAgent(VLMAgent):
         2. Provide the FINAL list of 10 coordinates (x, y) for the robot.
         3. Explain how these points should be connected (mention Spline).
 
-        Please respond in Korean.
+        Important: The coordinates MUST be provided as a JSON array at the end of your response.
+        Example format:
+        ```json
+        [{{ "x": 1.0, "y": 2.0 }}, {{ "x": 3.5, "y": 4.2 }}]
+        ```
+
+        Please respond in Korean, but keep the JSON strictly in English/Numeric format.
         """
         
         response_text = self.generate_response(prompt)
