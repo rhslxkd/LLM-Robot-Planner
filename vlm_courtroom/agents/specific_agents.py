@@ -29,10 +29,28 @@ class CoordinateAgent(VLMAgent):
         You are a robot navigation assistant. 
         Analyze the scene (image or description provided): {image_description}
         Identify obstacles (e.g., puddles, cars).
-        [Robot Physical Profile: Unitree Go2]
-        - Body Length: 0.7m / Body Width: 0.31m
-        - Minimum Step Length: ~0.3m
-        - Optimal Waypoint Interval: 0.5m - 1.0m (to ensure smooth gait)
+        ### [CRITICAL: Robot Physical Constraints - Unitree Go2]
+        You MUST adhere to the following physical constraints for path planning:
+
+        1. **Physical Footprint**: 
+           - Body Dimensions: 0.7m (Length) x 0.31m (Width).
+           - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
+   
+        2. **Safety Protocol**:
+           - Maintain a minimum **Safety Margin of 0.5m** from any detected obstacle (puddles, objects, curbs).
+           - If a gap between obstacles is narrower than **0.8m**, it is considered UNPASSABLE. Do not attempt to go through.
+
+        3. **Locomotion Constraints**:
+           - Sequential Waypoint Distance (Step Length): 
+             - MIN: 0.4m (to prevent gait instability)
+             - MAX: 1.0m (to prevent excessive acceleration)
+             - RECOMMENDED: 0.6m - 0.7m
+           - Turning Radius: Avoid sharp 90-degree turns. Use smooth arcs with a radius of at least **0.5m**.
+
+        4. **Coordinate Mapping Strategy**:
+           - Use the robot's current position as (0, 0).
+           - Forward progress must be along the **+X axis**.
+           - Side-to-side movement is along the **Y axis**.
         
         Task:
         1. Analyze the scene and Explain your path planning logic.
@@ -143,6 +161,28 @@ class JudgeAgent(VLMAgent):
         Evaluate the Original Path: {proposal}
         Prosecution Argument: {prosecution}
         Defense Argument: {defense}
+        ### [CRITICAL: Robot Physical Constraints - Unitree Go2]
+        You MUST adhere to the following physical constraints for path planning:
+
+        1. **Physical Footprint**: 
+           - Body Dimensions: 0.7m (Length) x 0.31m (Width).
+           - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
+   
+        2. **Safety Protocol**:
+           - Maintain a minimum **Safety Margin of 0.5m** from any detected obstacle (puddles, objects, curbs).
+           - If a gap between obstacles is narrower than **0.8m**, it is considered UNPASSABLE. Do not attempt to go through.
+
+        3. **Locomotion Constraints**:
+           - Sequential Waypoint Distance (Step Length): 
+             - MIN: 0.4m (to prevent gait instability)
+             - MAX: 1.0m (to prevent excessive acceleration)
+             - RECOMMENDED: 0.6m - 0.7m
+           - Turning Radius: Avoid sharp 90-degree turns. Use smooth arcs with a radius of at least **0.5m**.
+
+        4. **Coordinate Mapping Strategy**:
+           - Use the robot's current position as (0, 0).
+           - Forward progress must be along the **+X axis**.
+           - Side-to-side movement is along the **Y axis**.
         
         Decide on the FINAL path. You can accept the original or modify it.
         1. State your Verdict and Logic.
