@@ -46,11 +46,12 @@ class VLMCourt:
         print(f"👨‍⚖️ Verdict:\n{judge_msg.content}\n")
         
         # 5. Visualization (if image_path is provided)
+        coordinates = []
         if image_path:
-            self.visualize_path(image_path, judge_msg.content, robot_pos, scale)
+            coordinates = self.visualize_path(image_path, judge_msg.content, robot_pos, scale)
 
         print("=== 🏛️ Case Closed 🏛️ ===")
-        return judge_msg
+        return judge_msg, coordinates
 
     def visualize_path(self, image_path: str, verdict_text: str, robot_pos: tuple = None, scale: float = None):
         try:
@@ -68,7 +69,7 @@ class VLMCourt:
 
             if not json_match:
                 print(f"⚠️ Could not find coordinate JSON in verdict. Raw verdict:\n{verdict_text}")
-                return
+                return []
 
             json_str = json_match.group(1) if json_match.groups() else json_match.group(0)
             
@@ -82,8 +83,20 @@ class VLMCourt:
             except json.JSONDecodeError as e:
                 print(f"❌ JSON Parsing failed: {e}")
                 print(f"Raw extracted string: {json_str}")
-                return
+                return []
             
+            # Determine project root
+            current_file_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_file_dir)
+            project_output_dir = os.path.join(project_root, "outputs")
+            os.makedirs(project_output_dir, exist_ok=True)
+
+            # Save coordinates to a JSON file for automation
+            automation_json_path = os.path.join(project_output_dir, "last_judged_path.json")
+            with open(automation_json_path, 'w') as f:
+                json.dump(coordinates, f, indent=2)
+            print(f"📄 Saved coordinates for automation to: {automation_json_path}")
+
             # Load image
             img = mpimg.imread(image_path)
             fig, ax = plt.subplots(figsize=(10, 10))
@@ -115,8 +128,8 @@ class VLMCourt:
                     # For brax.png, robot faces RIGHT. 
                     # So x+ is Image Right. y+ is Image Up (Left of robot).
                     
-                    px = rx + (c['x'] * scale)
-                    py = ry - (c['y'] * scale) 
+                    px = rx - (c['x'] * scale)
+                    py = ry + (c['y'] * scale) 
                     plot_xs.append(px)
                     plot_ys.append(py)
                 
@@ -141,9 +154,8 @@ class VLMCourt:
             plt.legend()
             
             # Imports for saving
-            import os
-            import shutil
             from datetime import datetime
+            import shutil
 
             input_filename = os.path.basename(image_path)
             filename_no_ext, ext = os.path.splitext(input_filename)
@@ -182,6 +194,8 @@ class VLMCourt:
             print(f"🖼️ Saved verdict to Project Outputs: {output_path_project}")
             
             plt.close()
+            return coordinates
 
         except Exception as e:
             print(f"❌ Visualization failed: {e}")
+            return []

@@ -1,20 +1,42 @@
 import numpy as np
 import json
+import os
 
-def convert_path_to_3d():
-    # Input 2D path as list of dictionaries
-    path_2d = [
-      {"x": 0.0, "y": 0.0},
-      {"x": -0.2, "y": 0.5},
-      {"x": -0.5, "y": 1.0},
-      {"x": -1.0, "y": 1.5},
-      {"x": -2.0, "y": 1.5},
-      {"x": -2.5, "y": 1.5},
-      {"x": -3.0, "y": 1.0},
-      {"x": -3.5, "y": 0.5},
-      {"x": -4.0, "y": 0.0},
-      {"x": -4.5, "y": 0.0}
-    ]
+def convert_path_to_3d(json_path=None):
+    # Default path for automated coordinate transfer
+    if json_path is None:
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(current_dir)
+        json_path = os.path.join(project_root, "outputs", "last_judged_path.json")
+
+    # Try to load from JSON file
+    path_2d = []
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r') as f:
+                path_2d = json.load(f)
+            print(f"✅ Loaded {len(path_2d)} coordinates from: {json_path}")
+        except Exception as e:
+            print(f"❌ Failed to load JSON from {json_path}: {e}")
+    else:
+        print(f"⚠️ JSON file not found at {json_path}. Using fallback sample.")
+        # Fallback sample path
+        path_2d = [
+          {"x": 0.0, "y": 0.0},
+          {"x": -0.2, "y": 0.5},
+          {"x": -0.5, "y": 1.0},
+          {"x": -1.0, "y": 1.5},
+          {"x": -2.0, "y": 1.5},
+          {"x": -2.5, "y": 1.5},
+          {"x": -3.0, "y": 1.0},
+          {"x": -3.5, "y": 0.5},
+          {"x": -4.0, "y": 0.0},
+          {"x": -4.5, "y": 0.0}
+        ]
+
+    if not path_2d:
+        print("Empty path provided.")
+        return np.array([])
 
     # Convert to numpy array of shape (N, 2)
     path_np_2d = np.array([[p["x"], p["y"]] for p in path_2d])
@@ -38,11 +60,9 @@ def convert_path_to_3d():
 if __name__ == "__main__":
     path_3d = convert_path_to_3d()
     
-    print("Original 2D Path (Preview):")
-    print(convert_path_to_3d.__code__.co_consts[1]) # Just printing a placeholder or the input for verification isn't easy with consts, let's just print the output.
-    
-    print("\nConverted 3D Path (Numpy Array):\n")
-    print(path_3d)
-    
-    print("\nFormatted List for Dial-MPC (Python list of lists):")
-    print(path_3d.tolist())
+    if path_3d.size > 0:
+        print("\nConverted 3D Path (Numpy Array):\n")
+        print(path_3d)
+        
+        print("\nFormatted List for Dial-MPC (Python list of lists):")
+        print(path_3d.tolist())
