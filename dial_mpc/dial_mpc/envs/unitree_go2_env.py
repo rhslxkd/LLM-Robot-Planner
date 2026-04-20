@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, Sequence, Tuple, Union, List
 
 import numpy as np
+import os
+import json
 
 import jax
 import jax.numpy as jnp
@@ -117,6 +119,10 @@ class UnitreeGo2Env(BaseEnv):
 
         pipeline_state = self.pipeline_init(self._init_q, jnp.zeros(self._nv))
 
+        init_torso_pos = pipeline_state.x.pos[self._torso_idx - 1]
+        vlm_origin_xy = jnp.array([init_torso_pos[0], init_torso_pos[1]])
+        vlm_origin_z = init_torso_pos[2]
+
         state_info = {
             "rng": rng,
             "pos_tar": jnp.array([0.282, 0.0, 0.3]),
@@ -129,14 +135,11 @@ class UnitreeGo2Env(BaseEnv):
             "randomize_target": self._config.randomize_tasks,
             "last_contact": jnp.zeros(4, dtype=jnp.bool),
             "feet_air_time": jnp.zeros(4),
+            "vlm_origin_xy": vlm_origin_xy,
+            "vlm_origin_z": vlm_origin_z,
         }
 
         obs = self._get_obs(pipeline_state, state_info)
-
-        # 로봇 초기 torso 위치를 VLM 좌표계 원점으로 기록
-        init_torso_pos = pipeline_state.x.pos[self._torso_idx - 1]
-        self._vlm_origin_xy = jnp.array([init_torso_pos[0], init_torso_pos[1]])
-        self._vlm_origin_z = init_torso_pos[2]
 
         reward, done = jnp.zeros(2)
         metrics = {}
@@ -180,17 +183,17 @@ class UnitreeGo2Env(BaseEnv):
         
         # XY: VLM 상대좌표 + 로봇 초기 위치 / Z: 로봇 초기 높이 + VLM Z변화량
         pos_tar = jnp.array([
-            self._vlm_origin_xy[0] + vlm_interp[0],
-            self._vlm_origin_xy[1] + vlm_interp[1],
-            self._vlm_origin_z + vlm_interp[2],
+           state.info["vlm_origin_xy"][0] + vlm_interp[0],
+           state.info["vlm_origin_xy"][1] + vlm_interp[1],
+           state.info["vlm_origin_z"] + vlm_interp[2],
         ])
         
         # 다음 지점을 향한 방향 벡터를 vel_tar로 주입 (로봇이 능동적으로 움직이게 함)
         # 차기 웨이포인트의 월드 좌표 계산
         next_world = jnp.array([
-            self._vlm_origin_xy[0] + path[idx_high][0],
-            self._vlm_origin_xy[1] + path[idx_high][1],
-            self._vlm_origin_z + path[idx_high][2],
+            state.info["vlm_origin_xy"][0] + path[idx_high][0],
+            state.info["vlm_origin_xy"][1] + path[idx_high][1],
+            state.info["vlm_origin_z"] + path[idx_high][2],
         ])
         target_dir_world = next_world - x.pos[self._torso_idx - 1]
         dist_xy = jnp.linalg.norm(target_dir_world[:2]) + 1e-5
@@ -439,6 +442,10 @@ class UnitreeGo2SeqJumpEnv(UnitreeGo2Env):
         rng, key = jax.random.split(rng)
         pipeline_state = self.pipeline_init(self._init_q, jnp.zeros(self._nv))
 
+        init_torso_pos = pipeline_state.x.pos[self._torso_idx - 1]
+        vlm_origin_xy = jnp.array([init_torso_pos[0], init_torso_pos[1]])
+        vlm_origin_z = init_torso_pos[2]
+
         state_info = {
             "rng": rng,
             "pos_tar": jnp.array([0.0, 0.0, 0.27]),
@@ -452,6 +459,8 @@ class UnitreeGo2SeqJumpEnv(UnitreeGo2Env):
             "last_contact": jnp.zeros(4, dtype=jnp.bool),
             "feet_air_time": jnp.zeros(4),
             "last_ctrl": jnp.zeros(12),
+            "vlm_origin_xy": vlm_origin_xy,
+            "vlm_origin_z": vlm_origin_z,
         }
 
         state_info["contact_stage"] = 0
