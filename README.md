@@ -107,14 +107,29 @@ VLM이 계획한 waypoint를 받아 물리 법칙 내에서 실현 가능한 모
 
 ## Demo
 
-### Path Planning Result (VLM Courtroom Output)
-<!-- 경로 시각화 이미지를 여기에 추가하세요 -->
-<!-- 예: ![Path Planning Result](vlm_courtroom/outputs/your_image.png) -->
+### VLM Courtroom — Path Planning Results
 
-### Robot Execution (DIAL-MPC)
-<!-- 시뮬레이션 또는 실제 로봇 영상을 여기에 추가하세요 -->
-<!-- YouTube 링크 예: [![Demo Video](thumbnail.png)](https://youtu.be/your_link) -->
-<!-- 또는 GIF: ![Demo](assets/demo.gif) -->
+| Trial 1 | Trial 2 |
+|---------|---------|
+| ![result1](assets/vlm_court_result1.png) | ![result2](assets/vlm_court_result2.png) |
+
+> 위 이미지를 `assets/` 폴더에 저장한 뒤 파일명을 맞춰주세요. 이미지가 하나라면 아래처럼 단독으로도 사용 가능합니다.
+>
+> ```markdown
+> ![VLM Courtroom Result](assets/vlm_court_result.png)
+> ```
+
+---
+
+### DIAL-MPC — Unitree Go2 Walking
+
+<!-- 로컬 GIF/MP4 사용 시 (GitHub은 GIF 자동 재생 지원) -->
+![Go2 Walking Demo](assets/go2_walk.gif)
+
+<!-- YouTube 영상 사용 시 아래 링크 방식으로 교체하세요 -->
+<!--
+[![Go2 Walking Demo](assets/go2_thumbnail.png)](https://youtu.be/YOUR_VIDEO_ID)
+-->
 
 ---
 
