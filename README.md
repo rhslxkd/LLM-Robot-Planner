@@ -239,6 +239,11 @@ python vlm_courtroom/main_court.py
 
 ### DIAL-MPC 라이브러리 다운로드 
 dial-mpc 파일에 있는 README 확인.
+
+### DIAL-MPC 실행
+```bash
+python dial_mpc/dial_mpc/core/dial_core.py --example unitree_go2_trot
+```
 ---
 
 ## References
