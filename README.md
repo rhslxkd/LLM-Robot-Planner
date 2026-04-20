@@ -1,253 +1,241 @@
-# 🏛️ VLM Courtroom: 상세 코드 리뷰 (Detailed Code Review)
+# HELM-Brain: Hierarchical Embodied Language Model for Robot Navigation
 
-이 문서는 **VLM Courtroom** 프로젝트의 모든 파일에 대해, **실제 코드**와 함께 **상세한 설명**을 제공합니다. 
-
----
-
-## 📂 프로젝트 구조 (Project Structure)
-
-```
-HELM_Brain/
-├── vlm_courtroom/
-│   ├── __init__.py            # 패키지 인식용 파일
-│   ├── config.py              # Vertex AI 설정 및 초기화
-│   ├── main_court.py          # 메인 실행 파일
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   ├── base_agent.py      # 에이전트 부모 클래스
-│   │   └── specific_agents.py # 4명의 특수 에이전트 정의
-│   └── court/
-│       ├── __init__.py
-│       └── courtroom.py       # 재판 진행 및 시각화
-```
+> **뇌(VLM Courtroom) + 몸(DIAL-MPC)** — 학습 데이터 없이 언어 모델이 계획하고, 로봇이 실행하는 자율 항법 프레임워크
 
 ---
 
-## 0️⃣ `__init__.py` 의 역할
+## Overview
+
+HELM-Brain은 두 가지 핵심 모듈을 결합한 자율 로봇 항법 시스템입니다.
+
+- **Brain (VLM Courtroom)**: Vision-Language Model(VLM)이 카메라 이미지를 분석하고, 4개의 AI 에이전트가 법정 토론(Courtroom Debate) 방식으로 최적 경로를 합의 도출
+- **Body (DIAL-MPC)**: CMA-ES(Covariance Matrix Adaptation Evolution Strategy) 기반 Model Predictive Control로, **별도의 학습 데이터나 사전 훈련 없이** 로봇이 결정된 경로를 실행
+
+기존 로봇 항법 연구는 대규모 학습 데이터와 환경별 재훈련이 필요했습니다. 본 프로젝트는 이 두 가지 제약을 동시에 해결하며, 향후 **성격(Personality) 파라미터**를 통해 감정 기반 로봇 행동까지 확장 가능한 아키텍처를 설계했습니다.
+
+---
+
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        INPUT                            │
+│              Camera Image + Task Description            │
+└─────────────────────┬───────────────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────────┐
+│                  🧠  BRAIN                               │
+│               VLM Courtroom                             │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  [Step 1] CoordinateAgent                       │    │
+│  │   - VLM이 이미지 분석 → 장애물 인식             │    │
+│  │   - 로봇 물리 제약 준수 10개 경유점 초안 생성   │    │
+│  │   - ChromaDB에 경로 데이터 저장                 │    │
+│  └──────────────────────┬──────────────────────────┘    │
+│                         │                               │
+│  ┌──────────────────────▼──────────────────────────┐    │
+│  │  [Step 2] ProsecutorAgent                       │    │
+│  │   - 제안 경로의 위험 요소 / 충돌 위험 반박      │    │
+│  └──────────────────────┬──────────────────────────┘    │
+│                         │                               │
+│  ┌──────────────────────▼──────────────────────────┐    │
+│  │  [Step 3] DefenseAttorneyAgent                  │    │
+│  │   - 효율성 / 실현 가능성 관점에서 경로 변호     │    │
+│  └──────────────────────┬──────────────────────────┘    │
+│                         │                               │
+│  ┌──────────────────────▼──────────────────────────┐    │
+│  │  [Step 4] JudgeAgent  (Gemini 1.5 Pro)          │    │
+│  │   - 양측 논거 종합 → 최종 경로 판결             │    │
+│  │   - JSON 형식으로 최종 waypoint 출력            │    │
+│  └──────────────────────┬──────────────────────────┘    │
+│                         │                               │
+└─────────────────────────┼───────────────────────────────┘
+                          │  Waypoints (x, y) JSON
+┌─────────────────────────▼───────────────────────────────┐
+│                  🤖  BODY                                │
+│                  DIAL-MPC                               │
+│                                                         │
+│   CMA-ES 기반 Model Predictive Control                  │
+│   - 학습 데이터 불필요 (Training-Free)                  │
+│   - MuJoCo/MJX 물리 시뮬레이션 환경                    │
+│   - Unitree Go2 / H1 로봇 지원                         │
+│                                                         │
+└─────────────────────────┬───────────────────────────────┘
+                          │
+┌─────────────────────────▼───────────────────────────────┐
+│                       OUTPUT                            │
+│            Robot Physical Execution + Visualization     │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Why Courtroom Debate?
+
+단일 LLM에게 경로를 요청하면 hallucination(환각)이나 물리적으로 불가능한 경로가 출력될 수 있습니다. 본 프로젝트는 이를 **적대적 다중 에이전트 토론(Adversarial Multi-Agent Debate)** 구조로 해결합니다.
+
+| 역할 | 모델 | 기능 |
+|------|------|------|
+| CoordinateAgent | Gemini 1.5 Flash | 초기 경로 제안 |
+| ProsecutorAgent | Gemini 1.5 Flash | 경로 위험성 검증 |
+| DefenseAttorneyAgent | Gemini 1.5 Flash | 경로 효율성 변호 |
+| **JudgeAgent** | **Gemini 1.5 Pro** | **최종 경로 확정** |
+
+검사와 변호인의 논거를 모두 청취한 판사(Judge)가 최종 경로를 결정하므로, 단일 에이전트 대비 안전성과 신뢰성이 향상됩니다.
+
+---
+
+## Why DIAL-MPC?
+
+기존 로봇 제어 방식의 한계:
+
+| 방식 | 한계 |
+|------|------|
+| 강화학습(RL) | 환경별 수백만 스텝 재학습 필요 |
+| 모방 학습 | 대규모 시연 데이터셋 필요 |
+| 전통 MPC | 정밀한 수식 모델 설계 필요 |
+
+**DIAL-MPC** ([논문 링크](https://arxiv.org/abs/2409.15610))는 CMA-ES(진화 전략) 기반으로 동작하여:
+- 사전 학습 데이터 없이 실시간 최적화
+- MuJoCo 물리 엔진으로 다중 궤적 병렬 시뮬레이션
+- Unitree Go2 (4족 보행), H1 (휴머노이드) 즉시 지원
+
+VLM이 계획한 waypoint를 받아 물리 법칙 내에서 실현 가능한 모션으로 변환합니다.
+
+---
+
+## Demo
+
+### Path Planning Result (VLM Courtroom Output)
+<!-- 경로 시각화 이미지를 여기에 추가하세요 -->
+<!-- 예: ![Path Planning Result](vlm_courtroom/outputs/your_image.png) -->
+
+### Robot Execution (DIAL-MPC)
+<!-- 시뮬레이션 또는 실제 로봇 영상을 여기에 추가하세요 -->
+<!-- YouTube 링크 예: [![Demo Video](thumbnail.png)](https://youtu.be/your_link) -->
+<!-- 또는 GIF: ![Demo](assets/demo.gif) -->
+
+---
+
+## Key Features
+
+- **Training-Free**: 새로운 환경, 새로운 로봇에 재학습 없이 즉시 적용
+- **Multi-Agent Verification**: 토론 기반 경로 검증으로 단일 LLM 대비 신뢰성 향상
+- **Visual Grounding**: 이미지 직접 분석 → 별도 센서 맵핑 파이프라인 불필요
+- **Memory**: ChromaDB 벡터 DB로 경로 히스토리 저장 및 유사 상황 검색
+- **Modular**: 뇌(Brain)와 몸(Body)이 독립 모듈 → 각각 교체/업그레이드 가능
+
+---
+
+## Robot Physical Constraints (Go2)
+
+VLM 에이전트는 경로 생성 시 아래 물리 제약을 준수합니다:
+
+```
+- 동적 안전 반경: 0.5m
+- 장애물 안전 마진: 0.5m 이상
+- 통과 불가 갭: 0.8m 미만
+- 스텝 길이: 0.4m ~ 1.0m (권장 0.6~0.7m)
+- 최소 회전 반경: 0.5m (급격한 방향 전환 금지)
+```
+
+---
+
+## Future Vision: Personality-Weighted Robot
+
+본 아키텍처의 핵심 확장 가능성은 **Brain 모듈에 성격(Personality) 파라미터를 주입**하는 것입니다.
 
 ```python
-# (비어 있음)
-```
-
-### 💡 "얘는 도대체 역할이 뭐야??"
-- **정체**: 이 파일은 파이썬에게 **"이 폴더(`vlm_courtroom`)는 단순한 폴더가 아니라, 불러와서 쓸 수 있는 '패키지(Package)'야!"** 라고 알려주는 명찰입니다.
-- **기능**:
-    - 이 파일이 있어야 다른 파이썬 파일에서 `from vlm_courtroom import ...` 처럼 폴더 내부의 코드를 불러올 수 있습니다.
-    - 보통은 비워두지만, 패키지를 불러올 때 초기화해야 할 코드가 있다면 여기에 적기도 합니다.
-- **결론**: 내용은 없어도 **존재 자체가 중요**한 파일입니다. 없으면 `import` 에러가 날 수 있습니다.
-
----
-
-## 1️⃣ `vlm_courtroom/config.py`
-
-이 파일은 구글 Vertex AI (Gemini)를 사용하기 위한 **설정 파일**입니다.
-
-### 📜 전체 코드
-```python
-import os
-import json
-import vertexai
-from vertexai.generative_models import GenerativeModel
-from google.oauth2 import service_account
-
-# Determine the project root
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-KEY_PATH = "/mnt/d/_SECRETS/keys/vertex/google_vertex_key.json"
-PROJECT_ID = "kaggle-genai-477714"
-LOCATION = "us-central1"
-
-# Map roles to specific models
-AGENT_MODEL_MAP = {
-    "JUDGE": "gemini-1.5-pro",
-    "COORDINATE": "gemini-1.5-flash",
-    "PROSECUTOR": "gemini-1.5-flash",
-    "DEFENSE": "gemini-1.5-flash"
+# 예시: 성격 파라미터 주입
+personality = {
+    "aggression": 0.2,      # 낮을수록 보수적 경로
+    "curiosity": 0.8,       # 높을수록 탐색적 행동
+    "risk_tolerance": 0.3,  # 낮을수록 안전 마진 증가
+    "empathy": 0.9          # 높을수록 주변 개체 회피 우선
 }
-
-def init_vertex_ai():
-    """Initializes Vertex AI with the service account key."""
-    if not os.path.exists(KEY_PATH):
-        raise FileNotFoundError(f"Key file not found at {KEY_PATH}")
-        
-    try:
-        with open(KEY_PATH, 'r') as f:
-            key_data = json.load(f)
-            project_id = key_data.get('project_id')
-            
-        credentials = service_account.Credentials.from_service_account_file(KEY_PATH)
-        vertexai.init(project=project_id, location=LOCATION, credentials=credentials)
-        print(f"✅ Vertex AI Initialized for project: {project_id}")
-        return project_id
-    except Exception as e:
-        print(f"❌ Failed to initialize Vertex AI: {e}")
-        raise e
-
-def get_model(role: str = "DEFAULT"):
-    """
-    Returns a configured GenerativeModel instance based on the agent's role.
-    Defaults to gemini-1.5-flash if role is not found.
-    """
-    model_name = AGENT_MODEL_MAP.get(role.upper(), "gemini-1.5-flash")
-    return GenerativeModel(model_name)
 ```
 
-### 🔍 상세 설명
-1. **`KEY_PATH`**: 인증 키(`google_vertex_key.json`)가 있는 절대 경로입니다. 이 파일이 없으면 AI에 접속할 수 없습니다.
-2. **`AGENT_MODEL_MAP`**: 각 역할별로 어떤 AI 모델을 쓸지 정해둔 지도입니다.
-    - **JUDGE (판사)**: 가장 똑똑해야 하므로 `gemini-1.5-pro`를 씁니다.
-    - **나머지**: 속도가 중요하므로 빠르고 저렴한 `gemini-1.5-flash`를 씁니다.
-3. **`init_vertex_ai()`**: 프로그램이 시작될 때 딱 한 번 호출됩니다. 키 파일을 읽어서 구글 서버에 "나 접속할게!"라고 신고(인증)하는 함수입니다.
-4. **`get_model(role)`**: 각 에이전트가 생성될 때 "저 무슨 모델 써야 해요?"라고 물어보는 함수입니다. 역할(`role`)을 주면 그에 맞는 모델(`GenerativeModel`)을 꺼내줍니다.
+이 파라미터들이 각 에이전트의 프롬프트와 판단 기준에 반영되면:
+
+- **같은 환경**에서도 로봇마다 다른 행동 양식을 보임
+- 상황에 따라 성격이 동적으로 변화하는 **감정 기반 로봇** 구현 가능
+
+### 응용 분야
+
+| 분야 | 적용 예시 |
+|------|-----------|
+| 로봇 경찰견 | 고위험 상황 → aggression↑, risk_tolerance↑ / 민간 구조 → empathy↑ |
+| 의료 서비스 로봇 | empathy↑, aggression=0 으로 환자 친화적 행동 |
+| 물류 로봇 | efficiency↑, risk_tolerance 중간 |
+| 재난 구조 로봇 | curiosity↑ (미지 환경 탐색), risk_tolerance↑ |
+
+단순 도구가 아닌, **맥락을 이해하고 성격에 따라 판단하는 로봇**으로의 전환점이 될 수 있습니다.
 
 ---
 
-## 2️⃣ `vlm_courtroom/agents/base_agent.py`
+## Project Structure
 
-모든 에이전트들의 **어머니(부모 클래스)**입니다. 공통적인 기능(AI와 대화하기)을 여기서 정의합니다.
-
-### 📜 핵심 코드 (Generate Response)
-```python
-def generate_response(self, prompt: str, image_path: Optional[str] = None) -> str:
-    """Helper to generate content from Gemini."""
-    try:
-        from vertexai.generative_models import Part
-        
-        contents = [prompt]
-        if image_path:
-            # 이미지가 있으면 읽어서 contents에 추가
-            with open(image_path, "rb") as f:
-                image_data = f.read()
-            # 확장자에 따라 MIME 타입 결정
-            mime_type = "image/jpeg" 
-            if image_path.lower().endswith(".png"):
-                mime_type = "image/png"
-            
-            # Vertex AI 전용 이미지 객체 생성
-            image_part = Part.from_data(data=image_data, mime_type=mime_type)
-            contents.append(image_part)
-
-        # 텍스트 + 이미지 묶어서 전송!
-        response = self.model.generate_content(contents)
-        return response.text
-    except Exception as e:
-        return f"Error generating response: {e}"
 ```
-### 🔍 상세 설명
-- **역할**: 에이전트가 말을 할 수 있게 해주는 입과 귀입니다.
-- **이미지 처리**: `image_path`가 들어오면, 컴퓨터가 이해하는 0과 1의 데이터(`image_data`)로 변환하고, 이를 AI에게 보낼 수 있는 편지 봉투(`Part`)에 담습니다.
-- **전송**: 텍스트 프롬프트와 이미지 봉투를 `contents` 리스트에 담아 `model.generate_content`로 보냅니다.
+HELM-Brain/
+├── vlm_courtroom/              # 🧠 Brain Module
+│   ├── config.py               # Vertex AI (Gemini) 설정
+│   ├── main_court.py           # 실행 진입점
+│   ├── agents/
+│   │   ├── base_agent.py       # 에이전트 공통 인터페이스
+│   │   └── specific_agents.py  # 4개 전문 에이전트 구현
+│   ├── court/
+│   │   └── courtroom.py        # 법정 진행 및 경로 시각화
+│   ├── inputs/                 # 입력 이미지 저장
+│   └── outputs/                # 경로 시각화 결과 저장
+│
+├── dial_mpc/                   # 🤖 Body Module (DIAL-MPC)
+│   ├── dial_mpc/
+│   │   ├── core/               # CMA-ES MPC 핵심 알고리즘
+│   │   ├── envs/               # 로봇 환경 정의
+│   │   ├── models/             # Unitree Go2, H1 MuJoCo 모델
+│   │   └── deploy/             # 실제 로봇 배포 인터페이스
+│   └── examples/               # 실행 예시 (trot, jump, loco)
+│
+└── unitree_go2_trot/           # 실험 결과 데이터
+    └── *.html / *.pdf          # Brax 시뮬레이션 시각화
+```
 
 ---
 
-## 3️⃣ `vlm_courtroom/agents/specific_agents.py`
+## Getting Started
 
-4명의 특수 요원들이 정의된 곳입니다.
+### Requirements
 
-### 📜 CoordinateAgent (좌표 생성 요원)
-```python
-class CoordinateAgent(VLMAgent):
-    def __init__(self, name="CoordinateAgent", reset_db=False):
-        super().__init__(name, "Coordinate Generator", model_role="COORDINATE")
-        # ChromaDB (기억 저장소) 초기화
-        self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
-        
-        if reset_db:
-            # reset_db가 참이면 기억 삭제 (테스트용)
-            try:
-                self.chroma_client.delete_collection("scene_coordinates")
-                print(f"[{self.name}] 🗑️ Existing VectorDB collection deleted (Reset).")
-            except Exception:
-                pass 
-        self.collection = self.chroma_client.get_or_create_collection(name="scene_coordinates")
-
-    def process(self, context):
-        # ... 프롬프트 작성 ...
-        prompt = """
-        Task:
-        1. Analyze the scene and Explain your path planning logic.
-        2. Generate 10 sequential (x, y) coordinates.
-        Output Format: ## Scene Analysis ... ## Coordinates
-        Example: [{"x": 1, "y": 2}]
-        """
-        # ... 응답 파싱 및 DB 저장 ...
+```bash
+# Python 3.10+
+pip install google-cloud-aiplatform chromadb matplotlib
+pip install -e dial_mpc/
 ```
-### 🔍 상세 설명
-- **ChromaDB**: AI가 생성한 경로를 `./chroma_db` 폴더에 영구 저장합니다. 나중에 "아까 비슷한 상황에서 어떻게 했지?"라고 검색할 때 쓰입니다.
-- **`reset_db`**: 테스트할 때마다 예전 데이터가 쌓이면 헷갈리므로, 싹 지우고 시작하는 옵션입니다.
-- **Prompt**: 단순히 좌표만 뱉는 게 아니라, **"왜 그렇게 했는지(Logic)"** 설명하도록 하여 사용자가 이해하기 쉽게 만듭니다.
+
+### Vertex AI 설정
+
+Google Cloud 서비스 계정 키를 발급 후:
+
+```python
+# vlm_courtroom/config.py
+KEY_PATH = "/path/to/your/google_vertex_key.json"
+PROJECT_ID = "your-gcp-project-id"
+```
+
+### 실행
+
+```bash
+python vlm_courtroom/main_court.py
+```
+
+입력 이미지와 시나리오를 설정하면 법정 토론 후 경로가 `vlm_courtroom/outputs/`에 저장됩니다.
 
 ---
 
-## 4️⃣ `vlm_courtroom/court/courtroom.py`
+## References
 
-재판을 지휘하고 결과를 그려주는 **감독관**입니다.
-
-### 📜 시각화 및 파일 저장 코드 (Visualize Path)
-```python
-def visualize_path(self, image_path: str, verdict_text: str, robot_pos: tuple = None, scale: float = None):
-    # ... 좌표 파싱 및 그래프 그리기 (matplotlib) ...
-    
-    # Imports for saving
-    import os
-    import shutil
-    from datetime import datetime
-
-    input_filename = os.path.basename(image_path)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    # 1. 원본 관리: 프로젝트 내부 inputs 폴더로 복사 (기록용)
-    project_input_dir = os.path.join(os.getcwd(), "vlm_courtroom", "inputs")
-    os.makedirs(project_input_dir, exist_ok=True)
-    target_input_path = os.path.join(project_input_dir, input_filename)
-    
-    if os.path.abspath(image_path) != os.path.abspath(target_input_path):
-        shutil.copy2(image_path, target_input_path)
-    
-    # 2. 결과 저장: 프로젝트 내부 outputs 폴더에만 저장!
-    project_output_dir = os.path.join(os.getcwd(), "vlm_courtroom", "outputs")
-    os.makedirs(project_output_dir, exist_ok=True)
-    
-    output_filename = f"{filename_no_ext}_verdict_{timestamp}{ext}"
-    output_path_project = os.path.join(project_output_dir, output_filename)
-    
-    plt.savefig(output_path_project)
-    print(f"🖼️ Saved verdict to Project Outputs: {output_path_project}")
-```
-### 🔍 상세 설명
-- **역할**: 재판이 끝나고 판결이 나오면, 이미지를 불러와서 경로를 그립니다.
-- **파일 관리 (File Management)**:
-    1. **Input 복사**: D드라이브에 있는 원본을 프로젝트 안(`vlm_courtroom/inputs`)으로 복사해옵니다. 나중에 원본이 없어져도 프로젝트는 돌아가게 하기 위함입니다.
-    2. **Output 저장**: 결과 파일은 **오직** 프로젝트 안(`vlm_courtroom/outputs`)에만 저장합니다. D드라이브 원본 폴더는 깨끗하게 유지됩니다.
-
----
-
-## 5️⃣ `vlm_courtroom/main_court.py`
-
-사용자가 실행하는 **조종석(Cockpit)** 파일입니다.
-
-### 📜 주요 실행 코드
-```python
-def main():
-    # 1. AI 접속
-    init_vertex_ai()
-    
-    # 2. 법정 개정 (DB 리셋 포함)
-    court = VLMCourt(reset_db=True) 
-
-    # 3. 이미지 설정 (Windows 경로)
-    IMAGE_DIR = "/mnt/d/Datasets/HELM/Input_images/go2/" 
-    image_filename = "brax (1).png"
-    image_path = os.path.join(IMAGE_DIR, image_filename)
-    
-    # 4. 보정 값 (Calibration)
-    # 로봇 위치 (950, 550) / 스케일 (300px = 1m)
-    robot_pos = (950, 550) 
-    scale = 300.0
-    
-    # 5. 재판 시작!
-    court.run_case(scenario, image_path=image_path, robot_pos=robot_pos, scale=scale)
-```
-### 🔍 상세 설명
-- **`court = VLMCourt(reset_db=True)`**: 여기서 법정을 세우면서 `reset_db=True`를 넘겨서, 시작할 때마다 벡터 DB를 깨끗이 비웁니다.
-- **경로 설정**: 윈도우의 데이터셋 경로를 `IMAGE_DIR`로 잡아두어, 파일명만 바꾸면 쉽게 다른 이미지도 테스트할 수 있습니다.
-- **Calibration**: `brax (1).png` 사진에 맞춰서 로봇 위치와 크기를 수동으로 잡아준 값입니다. 다른 사진을 쓸 때는 이 값을 바꿔줘야 정확하게 그려집니다.
+- **DIAL-MPC**: [Diffusion-Inspired Annealing for Loco-manipulation](https://arxiv.org/abs/2409.15610)
+- **Unitree Go2**: Quadruped robot platform
+- **MuJoCo MJX**: JAX-accelerated physics simulation
+- **Gemini 1.5**: Google DeepMind multimodal language model
