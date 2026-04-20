@@ -111,7 +111,8 @@ VLM이 계획한 waypoint를 받아 물리 법칙 내에서 실현 가능한 모
 
 
 > ```markdown
-> <img width="334" height="266" alt="스크린샷 2026-02-26 114444" src="https://github.com/user-attachments/assets/8c40acc3-8908-432c-a119-ab49092dd6f5" />
+<img width="667" height="531" alt="image" src="https://github.com/user-attachments/assets/2194be95-68c7-4034-a8a5-a03e9f72d760" />
+
 
 > ```
 
@@ -122,7 +123,10 @@ VLM이 계획한 waypoint를 받아 물리 법칙 내에서 실현 가능한 모
 <!-- 로컬 GIF/MP4 사용 시 (GitHub은 GIF 자동 재생 지원) -->
 
 
-https://github.com/user-attachments/assets/41a3205d-466a-4fe6-b214-963699babb2e
+
+https://github.com/user-attachments/assets/c6f617f0-534c-4fe9-84ec-8694296bfb28
+
+
 
 ---
 
