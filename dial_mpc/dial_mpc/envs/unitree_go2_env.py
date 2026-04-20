@@ -92,6 +92,20 @@ class UnitreeGo2Env(BaseEnv):
         assert not any(id_ == -1 for id_ in feet_site_id), "Site not found."
         self._feet_site_id = jnp.array(feet_site_id)
 
+        # --- [VLM 경로 로드] last_judged_path.json → (N, 3) 배열로 변환 ---
+        _vlm_json_path = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), '..', '..', '..', 'vlm_courtroom', 'outputs', 'last_judged_path.json'
+        ))
+        try:
+            with open(_vlm_json_path, 'r') as f:
+                _data = json.load(f)
+            _path_np = np.array([[p['x'], p['y'], p.get('z', 0.0)] for p in _data], dtype=np.float32)
+            print(f"[VLM Path] ✅ Loaded {len(_path_np)} waypoints from: {_vlm_json_path}")
+        except Exception as e:
+            print(f"[VLM Path] ⚠️ Failed: {e} → fallback (origin x10)")
+            _path_np = np.zeros((10, 3), dtype=np.float32)
+        self._vlm_path = jnp.array(_path_np)
+
     def make_system(self, config: UnitreeGo2EnvConfig) -> System:
         model_path = get_model_path("unitree_go2", "mjx_scene_force.xml")
         sys = mjcf.load(model_path)
@@ -118,6 +132,12 @@ class UnitreeGo2Env(BaseEnv):
         }
 
         obs = self._get_obs(pipeline_state, state_info)
+
+        # 로봇 초기 torso 위치를 VLM 좌표계 원점으로 기록
+        init_torso_pos = pipeline_state.x.pos[self._torso_idx - 1]
+        self._vlm_origin_xy = jnp.array([init_torso_pos[0], init_torso_pos[1]])
+        self._vlm_origin_z = init_torso_pos[2]
+
         reward, done = jnp.zeros(2)
         metrics = {}
         state = State(pipeline_state, obs, reward, done, metrics, state_info)
@@ -139,11 +159,9 @@ class UnitreeGo2Env(BaseEnv):
         # observation data
         obs = self._get_obs(pipeline_state, state.info)
 
-        # --- [추가/수정] VLM 궤적 추종 엔진 ---
-        # 1. VLM이 하사한 10개의 성스러운 좌표 (jnp.array)
-        path = jnp.array([[0.5, 0.2, 0.0], [1.0, 0.7, 0.0], [1.5, 1.0, 0.0], 
-        [2.0, 1.0, 0.0], [2.5, 1.0, 0.0], [3.0, 1.0, 0.0], [3.5, 0.7, 0.0], 
-        [4.0, 0.2, 0.0], [4.5, 0.0, 0.0], [5.0, 0.0, 0.0]])
+        # --- [VLM 궤적 추종 엔진] ---
+        # 1. __init__에서 JSON으로부터 로드한 (N, 3) 배열 사용
+        path = self._vlm_path
         num_points = path.shape[0]
         
         # 2. 시간 파라미터 설정 (총 1000스텝 동안 완주 가정)
@@ -157,16 +175,35 @@ class UnitreeGo2Env(BaseEnv):
         alpha = progress - idx_low # 보간 가중치 (0.0 ~ 1.0)
 
         # 4. 실시간 목표 위치(pos_tar) 및 목표 속도(vel_tar) 생성
-        # 현재 시점의 목표 위치
-        pos_tar = (1 - alpha) * path[idx_low] + alpha * path[idx_high]
+        # 현재 시점의 목표 위치 (보간된 VLM 상대 좌표)
+        vlm_interp = (1 - alpha) * path[idx_low] + alpha * path[idx_high]
+        
+        # XY: VLM 상대좌표 + 로봇 초기 위치 / Z: 로봇 초기 높이 + VLM Z변화량
+        pos_tar = jnp.array([
+            self._vlm_origin_xy[0] + vlm_interp[0],
+            self._vlm_origin_xy[1] + vlm_interp[1],
+            self._vlm_origin_z + vlm_interp[2],
+        ])
         
         # 다음 지점을 향한 방향 벡터를 vel_tar로 주입 (로봇이 능동적으로 움직이게 함)
-        target_dir = path[idx_high] - x.pos[self._torso_idx - 1]
-        dist = jnp.linalg.norm(target_dir[:2]) + 1e-5
+        # 차기 웨이포인트의 월드 좌표 계산
+        next_world = jnp.array([
+            self._vlm_origin_xy[0] + path[idx_high][0],
+            self._vlm_origin_xy[1] + path[idx_high][1],
+            self._vlm_origin_z + path[idx_high][2],
+        ])
+        target_dir_world = next_world - x.pos[self._torso_idx - 1]
+        dist_xy = jnp.linalg.norm(target_dir_world[:2]) + 1e-5
         
         # 궤적 방향을 따르는 속도 가이드 (최대 1.2m/s)
-        state.info["vel_tar"] = (target_dir / dist)[:3] * jnp.minimum(dist * 2.0, 1.2)
-        state.info["ang_vel_tar"] = jnp.array([0.0, 0.0, 0.0]) # 일단 방향은 정면 고정
+        # 월드 프레임 속도 → 바디 프레임으로 변환하는 것이 일반적이지만, 
+        # 기존 로직과의 호환성을 위해 우선 글로벌로 주입 후 보상에서 처리되는지 확인
+        target_vel_world = (target_dir_world / dist_xy) * jnp.minimum(dist_xy * 2.0, 1.2)
+        target_vel_body = global_to_body_velocity(target_vel_world, x.rot[self._torso_idx - 1])
+
+        state.info["vel_tar"] = target_vel_body
+        state.info["pos_tar"] = pos_tar
+        state.info["ang_vel_tar"] = jnp.array([0.0, 0.0, 0.0])
 
         # # switch to new target if randomize_target is True
         # def dont_randomize():
@@ -297,7 +334,7 @@ class UnitreeGo2Env(BaseEnv):
             pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
         )
         return state
-
+        
     def _get_obs(
         self,
         pipeline_state: base.State,
