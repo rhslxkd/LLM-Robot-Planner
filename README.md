@@ -1,4 +1,4 @@
-# HELM-Brain: Hierarchical Embodied Language Model for Robot Navigation
+# LLM-to-Robot Framework
 
 > **뇌(VLM Courtroom) + 몸(DIAL-MPC)** — 학습 데이터 없이 언어 모델이 계획하고, 로봇이 실행하는 자율 항법 프레임워크
 
