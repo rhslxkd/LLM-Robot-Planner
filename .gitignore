@@ -26,3 +26,8 @@ __pycache__/
 .env
 *.json
 .DS_Store
+*.html
+*.pdf
+results/
+outputs/
+*.npy
