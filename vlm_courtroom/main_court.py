@@ -25,7 +25,7 @@ def main():
         IMAGE_DIR = "/mnt/d/Datasets/HELM/Input_images/go2/" 
         
         # [User Input] Image Filename or Full Path
-        image_filename = "brax (1).png"
+        image_filename = "brax_oracle.png"
         
         if image_filename:
             # Check if it's a full path, otherwise join with IMAGE_DIR
