@@ -110,11 +110,7 @@ VLM이 계획한 waypoint를 받아 물리 법칙 내에서 실현 가능한 모
 ### VLM Courtroom — Path Planning Results
 
 
-> ```markdown
-<img width="667" height="531" alt="image" src="https://github.com/user-attachments/assets/2194be95-68c7-4034-a8a5-a03e9f72d760" />
-
-
-> ```
+<img width="667" alt="image" src="https://github.com/user-attachments/assets/2194be95-..."/>`
 
 ---
 
