@@ -237,8 +237,8 @@ PROJECT_ID = "your-gcp-project-id"
 python vlm_courtroom/main_court.py
 ```
 
-입력 이미지와 시나리오를 설정하면 법정 토론 후 경로가 `vlm_courtroom/outputs/`에 저장됩니다.
-
+### DIAL-MPC 라이브러리 다운로드 
+dial-mpc 파일에 있는 README 확인.
 ---
 
 ## References
