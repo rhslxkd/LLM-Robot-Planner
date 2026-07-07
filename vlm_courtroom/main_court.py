@@ -22,10 +22,10 @@ def main():
         # [Configuration]
         # Windows Path Example in WSL: "/mnt/d/Users/Downloads"
         # Project Input Path: os.path.join(current_dir, "vlm_courtroom", "inputs")
-        IMAGE_DIR = "/mnt/d/Datasets/HELM/Input_images/go2/" 
+        IMAGE_DIR = "/home/user/hyeonsoo/LLM-Robot-Planner/vlm_courtroom/inputs/" 
         
         # [User Input] Image Filename or Full Path
-        image_filename = "brax_oracle.png"
+        image_filename = "brax (1).png"
         
         if image_filename:
             # Check if it's a full path, otherwise join with IMAGE_DIR
