@@ -22,7 +22,7 @@ from brax.io import html
 import brax.envs as brax_envs
 
 import dial_mpc.envs as dial_envs
-from dial_mpc.utils.io_utils import get_example_path, load_dataclass_from_dict
+from dial_mpc.utils.io_utils import get_example_path, load_dataclass_from_dict, resolve_output_dir
 from dial_mpc.examples import examples
 from dial_mpc.core.dial_config import DialConfig
 
@@ -231,6 +231,7 @@ def main():
 
     # 얘가 YAML의 텍스트를 파이썬의 DialCOnfig와 env_config라는 객체로 변환
     dial_config = load_dataclass_from_dict(DialConfig, config_dict)
+    dial_config.output_dir = resolve_output_dir(dial_config.output_dir)
     rng = jax.random.PRNGKey(seed=dial_config.seed)
 
     # find env config

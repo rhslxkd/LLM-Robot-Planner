@@ -21,6 +21,7 @@ from dial_mpc.utils.io_utils import (
     load_dataclass_from_dict,
     get_model_path,
     get_example_path,
+    resolve_output_dir,
 )
 from dial_mpc.examples import deploy_examples
 
@@ -337,6 +338,7 @@ def main(args=None):
     sim_config = load_dataclass_from_dict(DialSimConfig, config_dict)
     env_config = load_dataclass_from_dict(BaseEnvConfig, config_dict)
     dial_config = load_dataclass_from_dict(DialConfig, config_dict)
+    dial_config.output_dir = resolve_output_dir(dial_config.output_dir)
     mujoco_env = DialSim(sim_config, env_config, dial_config)
 
     try:

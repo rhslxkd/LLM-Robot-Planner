@@ -37,6 +37,7 @@ from dial_mpc.utils.io_utils import (
     load_dataclass_from_dict,
     get_model_path,
     get_example_path,
+    resolve_output_dir,
 )
 from dial_mpc.examples import deploy_examples
 from dial_mpc.deploy.localization import load_plugin, get_available_plugins
@@ -358,6 +359,7 @@ def main(args=None):
     real_config = load_dataclass_from_dict(DialRealConfig, config_dict)
     env_config = load_dataclass_from_dict(BaseEnvConfig, config_dict)
     dial_config = load_dataclass_from_dict(DialConfig, config_dict)
+    dial_config.output_dir = resolve_output_dir(dial_config.output_dir)
     real_env = DialReal(real_config, env_config, dial_config, config_dict)
 
     try:
