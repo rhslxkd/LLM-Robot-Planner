@@ -29,7 +29,7 @@ from PIL import Image
 # ─── 경로 ───────────────────────────────────────────────────────────────
 MODELS_DIR = os.path.join(os.path.dirname(__file__),
                           "dial_mpc", "dial_mpc", "models", "unitree_go2")
-OUT_DIR    = os.path.join(os.path.dirname(__file__), "vlm_courtroom", "inputs")
+DATA_DIR   = os.path.join(os.path.dirname(__file__), "data")
 SCENE_GLOB = "oracle_scene_*.xml"        # 인자 없을 때 렌더할 씬 패턴
 
 # ─── 캘리브레이션 ───────────────────────────────────────────────────────
@@ -69,6 +69,8 @@ def _report_obstacles(model):
 
 def render_scene(scene_path):
     stem = os.path.splitext(os.path.basename(scene_path))[0]
+    scene_out_dir = os.path.join(DATA_DIR, stem)
+    os.makedirs(scene_out_dir, exist_ok=True)
     tmp = _inject_camera(scene_path)
     try:
         model = mujoco.MjModel.from_xml_path(tmp)
@@ -76,9 +78,9 @@ def render_scene(scene_path):
         with mujoco.Renderer(model, height=IMG_H, width=IMG_W) as r:
             r.update_scene(data, camera="oracle")
             img = r.render()
-        out = os.path.join(OUT_DIR, f"oracle_{stem}.png")
+        out = os.path.join(scene_out_dir, "oracle.png")
         Image.fromarray(img).save(out)
-        print(f"  ✅ {os.path.basename(out)}")
+        print(f"  ✅ {out}")
         _report_obstacles(model)
     finally:
         if os.path.exists(tmp):
@@ -86,7 +88,6 @@ def render_scene(scene_path):
 
 # ═══════════════════════════════════════════════════════════════════════
 def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
     if len(sys.argv) > 1:
         scenes = [os.path.join(MODELS_DIR, a) if not os.path.isabs(a) else a
                   for a in sys.argv[1:]]
@@ -103,7 +104,7 @@ def main():
         if not os.path.exists(sp):
             print(f"  ⚠️ 없음: {sp}"); continue
         render_scene(sp)
-    print(f"\n출력: {OUT_DIR}")
+    print(f"\n출력: {DATA_DIR}/<scene_name>/oracle.png")
 
 if __name__ == "__main__":
     main()

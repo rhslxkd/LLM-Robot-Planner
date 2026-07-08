@@ -1,6 +1,7 @@
 
 import sys
 import os
+import argparse
 
 # Add the project root to sys.path to ensure imports work if run directly
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12,10 +13,19 @@ from vlm_courtroom.config import init_vertex_ai
 from vlm_courtroom.court.courtroom import VLMCourt
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--scene",
+        type=str,
+        default=None,
+        help="Scene name; writes outputs to <repo_root>/data/<scene>/ instead of the default vlm_courtroom/inputs|outputs/",
+    )
+    args = parser.parse_args()
+
     try:
         # Initialize Vertex AI connection
         init_vertex_ai()
-        
+
         # Initialize Court with Database Reset (clears previous tests)
         court = VLMCourt(reset_db=True)
 
@@ -56,7 +66,7 @@ def main():
             robot_pos = None
             scale = None
         
-        court.run_case(scenario, image_path=image_path, robot_pos=robot_pos, scale=scale)
+        court.run_case(scenario, image_path=image_path, robot_pos=robot_pos, scale=scale, scene_name=args.scene)
         
     except Exception as e:
         print(f"❌ An error occurred: {e}")
