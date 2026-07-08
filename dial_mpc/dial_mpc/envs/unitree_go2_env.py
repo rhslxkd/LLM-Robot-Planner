@@ -21,7 +21,7 @@ from mujoco import mjx
 
 from dial_mpc.envs.base_env import BaseEnv, BaseEnvConfig
 from dial_mpc.utils.function_utils import global_to_body_velocity, get_foot_step
-from dial_mpc.utils.io_utils import get_model_path
+from dial_mpc.utils.io_utils import get_model_path, resolve_output_dir
 
 
 @dataclass
@@ -33,6 +33,8 @@ class UnitreeGo2EnvConfig(BaseEnvConfig): # 이건 dataclass BaseEnvConfig를 �
     default_vyaw: float = 0.0 # 기본 각속도 설정
     ramp_up_time: float = 2.0 # 속도 증가 시간 설정
     gait: str = "trot" # 로봇의 보행 패턴 설정
+    scene_xml: str = "mjx_scene_force.xml" # 로드할 씬 XML (오라클 씬 배선용, 기본값은 기존 동작 유지)
+    vlm_path_json: Union[str, None] = None # VLM 경로 JSON 경로. None이면 기존 하드코딩 폴백 경로 사용
 
 
 class UnitreeGo2Env(BaseEnv):
@@ -95,9 +97,12 @@ class UnitreeGo2Env(BaseEnv):
         self._feet_site_id = jnp.array(feet_site_id)
 
         # --- [VLM 경로 로드] last_judged_path.json → (N, 3) 배열로 변환 ---
-        _vlm_json_path = os.path.normpath(os.path.join(
-            os.path.dirname(__file__), '..', '..', '..', 'vlm_courtroom', 'outputs', 'last_judged_path.json'
-        ))
+        if config.vlm_path_json is not None:
+            _vlm_json_path = resolve_output_dir(config.vlm_path_json)
+        else:
+            _vlm_json_path = os.path.normpath(os.path.join(
+                os.path.dirname(__file__), '..', '..', '..', 'vlm_courtroom', 'outputs', 'last_judged_path.json'
+            ))
         try:
             with open(_vlm_json_path, 'r') as f:
                 _data = json.load(f)
@@ -109,7 +114,7 @@ class UnitreeGo2Env(BaseEnv):
         self._vlm_path = jnp.array(_path_np)
 
     def make_system(self, config: UnitreeGo2EnvConfig) -> System:
-        model_path = get_model_path("unitree_go2", "mjx_scene_force.xml")
+        model_path = get_model_path("unitree_go2", config.scene_xml)
         sys = mjcf.load(model_path)
         sys = sys.tree_replace({"opt.timestep": config.timestep})
         return sys
