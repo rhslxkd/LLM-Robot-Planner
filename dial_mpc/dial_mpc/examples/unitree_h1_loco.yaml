@@ -1,6 +1,6 @@
 # DIAL-MPC
 seed: 0
-output_dir: unitree_h1_loco
+output_dir: data/unitree_h1_loco
 n_steps: 400
 
 env_name: unitree_h1_loco

@@ -1,6 +1,6 @@
 # DIAL-MPC
 seed: 0
-output_dir: unitree_go2_seq_jump
+output_dir: data/unitree_go2_seq_jump
 n_steps: 400
 
 env_name: unitree_go2_seq_jump
