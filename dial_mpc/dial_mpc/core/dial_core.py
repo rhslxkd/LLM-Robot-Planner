@@ -334,9 +334,10 @@ def main():
             jnp.concatenate(
                 [
                     jnp.array([i]),
-                    pipeline_state.qpos, # 로봇의 위치 및 자세 정보(19개)
-                    pipeline_state.qvel, # 로봇의 속도 정보 (18개)
-                    pipeline_state.ctrl, # 로봇의 제어 입력 (12개)
+                    pipeline_state.qpos,           # 로봇의 위치 및 자세 정보(19개)
+                    pipeline_state.qvel,            # 로봇의 속도 정보 (18개)
+                    pipeline_state.ctrl,             # 로봇의 제어 입력(명령 토크, 12개)
+                    pipeline_state.qfrc_actuator,     # 실제 관절 인가 토크(실측, 물리 반영, 18개)
                 ]
             )
         )
