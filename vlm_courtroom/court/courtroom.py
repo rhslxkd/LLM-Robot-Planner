@@ -135,8 +135,8 @@ class VLMCourt:
                     # For brax.png, robot faces RIGHT. 
                     # So x+ is Image Right. y+ is Image Up (Left of robot).
                     
-                    px = rx - (c['x'] * scale)
-                    py = ry + (c['y'] * scale) 
+                    px = rx + (c['x'] * scale)
+                    py = ry - (c['y'] * scale) 
                     plot_xs.append(px)
                     plot_ys.append(py)
                 

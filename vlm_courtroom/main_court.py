@@ -6,8 +6,9 @@ import argparse
 # Add the project root to sys.path to ensure imports work if run directly
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
-if project_root not in sys.path:
-    sys.path.append(project_root)
+if project_root in sys.path:
+    sys.path.remove(project_root)
+sys.path.insert(0, project_root)
 
 from vlm_courtroom.config import init_vertex_ai
 from vlm_courtroom.court.courtroom import VLMCourt
@@ -30,21 +31,17 @@ def main():
         court = VLMCourt(reset_db=True)
 
         # [Configuration]
-        # Windows Path Example in WSL: "/mnt/d/Users/Downloads"
-        # Project Input Path: os.path.join(current_dir, "vlm_courtroom", "inputs")
-        IMAGE_DIR = "/home/user/hyeonsoo/LLM-Robot-Planner/vlm_courtroom/inputs/" 
-        
-        # [User Input] Image Filename or Full Path
-        image_filename = "brax (1).png"
-        
-        if image_filename:
-            # Check if it's a full path, otherwise join with IMAGE_DIR
-            if os.path.isabs(image_filename):
-                image_path = image_filename
-            else:
-                image_path = os.path.join(IMAGE_DIR, image_filename)
+        if args.scene:
+            data_dir = os.path.join(project_root, "data", args.scene)
+            image_path = os.path.join(data_dir, "oracle.png")
         else:
-            image_path = None
+            IMAGE_DIR = "/home/user/hyeonsoo/LLM-Robot-Planner/vlm_courtroom/inputs/"
+            image_filename = "brax (1).png"
+            if image_filename:
+                image_path = (image_filename if os.path.isabs(image_filename)
+                              else os.path.join(IMAGE_DIR, image_filename))
+            else:
+                image_path = None
         
         # Example Scenario Description (Used if image_path is None or as context)
         scenario = """
