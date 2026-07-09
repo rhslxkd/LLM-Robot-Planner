@@ -44,12 +44,27 @@ def main():
                 image_path = None
         
         # Example Scenario Description (Used if image_path is None or as context)
-        scenario = """
-        중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야. 
-        그 상황속 사진에 보이듯이, 앞에 빨간 상자인 장애물이 있어, 
-        이 사진속 장애물을 피해서 앞으로 5m 이동할 수 있도록 10개의 좌표를 제시해줘.
-        반드시 상자를 피해가야해.
-        """
+        SCENARIO_TEMPLATES = {
+            "oracle_scene_A": """
+                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                그 상황속 사진에 보이듯이, 앞에 빨간 상자인 장애물이 있어,
+                이 사진속 장애물을 피해서 앞으로 5m 이동할 수 있도록 10개의 좌표를 제시해줘.
+                반드시 상자를 피해가야해.
+                """,
+            "oracle_scene_B": """
+                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                그 상황속 사진에 보이듯이, 앞에 빨간 상자 장애물이 두 개 있어.
+                첫 번째 상자(가까운 것, 로봇 기준 위쪽에 위치)는 아래쪽으로 살짝만 틀어서 피하고,
+                두 번째 상자(먼 것, 로봇 기준 아래쪽에 위치)는 위쪽으로 살짝만 틀어서 피해서,
+                지그재그(S자)로 최단 경로에 가깝게 앞으로 6.5m 이동할 수 있도록 10개의 좌표를 제시해줘.
+                각 상자로부터 최소 안전마진 0.5m는 반드시 확보하되, 불필요하게 크게 우회하지 말고
+                최대한 직선에 가까운 효율적인 경로로 움직여.
+                반드시 두 상자를 모두 피해가야해.
+                """,
+        }
+
+        DEFAULT_SCENARIO = SCENARIO_TEMPLATES["oracle_scene_A"]
+        scenario = SCENARIO_TEMPLATES.get(args.scene, DEFAULT_SCENARIO)
         
         if image_path:
             print(f"📸 Analying Image: {image_path}")
