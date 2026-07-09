@@ -34,23 +34,33 @@ SCENE_GLOB = "oracle_scene_*.xml"        # 인자 없을 때 렌더할 씬 패�
 
 # ─── 캘리브레이션 ───────────────────────────────────────────────────────
 IMG_W, IMG_H = 1263, 1080
-PPM          = 150.0                     # px per meter
+PPM_DEFAULT  = 150.0                     # px per meter (기본값)
+# 씬별로 카메라 시야를 넓혀야 할 때만 등록. main_court.py 의 SCENE_SCALE 과 반드시 동일값 유지.
+SCENE_PPM = {
+    "oracle_scene_C": 90.0,
+}
 ROBOT_PX     = (IMG_W / 2, IMG_H / 2)    # (631.5, 540)
 CAM_HEIGHT   = 50.0                      # 높을수록 orthographic 근접
-_V          = IMG_H / PPM                # 세로 가시범위 = 7.2 m
-FOVY_DEG    = 2 * np.degrees(np.arctan((_V / 2) / CAM_HEIGHT))
+
+def _fovy_for_ppm(ppm):
+    v = IMG_H / ppm
+    return 2 * np.degrees(np.arctan((v / 2) / CAM_HEIGHT))
+
+# 하위호환: 모듈 로드 시 기본값으로 초기화 (world_to_pixel 등에서 참조)
+PPM = PPM_DEFAULT
+FOVY_DEG = _fovy_for_ppm(PPM)
 
 # ═══════════════════════════════════════════════════════════════════════
 def world_to_pixel(wx, wy):
     """월드(x=전방, y=좌우) → 픽셀. +x=오른쪽, +y=위."""
     return ROBOT_PX[0] + wx * PPM, ROBOT_PX[1] - wy * PPM
 
-def _inject_camera(scene_path):
+def _inject_camera(scene_path, fovy_deg):
     """씬 XML 에 top-down 오라클 카메라를 주입한 임시 파일을 같은 폴더에 생성."""
     txt = open(scene_path).read()
     cam = (f'    <camera name="oracle" mode="fixed" '
            f'pos="0 0 {CAM_HEIGHT}" xyaxes="1 0 0 0 1 0" '
-           f'fovy="{FOVY_DEG:.6f}"/>\n')
+           f'fovy="{fovy_deg:.6f}"/>\n')
     if 'name="oracle"' not in txt:
         txt = txt.replace("</worldbody>", cam + "  </worldbody>")
     tmp = os.path.join(MODELS_DIR, "_oracle_tmp.xml")
@@ -68,10 +78,13 @@ def _report_obstacles(model):
             print(f"     · {name:12s} world({wx:+.2f},{wy:+.2f}) → pixel({u:.0f},{v:.0f}) [{inside}]")
 
 def render_scene(scene_path):
+    global PPM, FOVY_DEG
     stem = os.path.splitext(os.path.basename(scene_path))[0]
+    PPM = SCENE_PPM.get(stem, PPM_DEFAULT)
+    FOVY_DEG = _fovy_for_ppm(PPM)
     scene_out_dir = os.path.join(DATA_DIR, stem)
     os.makedirs(scene_out_dir, exist_ok=True)
-    tmp = _inject_camera(scene_path)
+    tmp = _inject_camera(scene_path, FOVY_DEG)
     try:
         model = mujoco.MjModel.from_xml_path(tmp)
         data  = mujoco.MjData(model); mujoco.mj_forward(model, data)

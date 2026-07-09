@@ -61,6 +61,13 @@ def main():
                 최대한 직선에 가까운 효율적인 경로로 움직여.
                 반드시 두 상자를 모두 피해가야해.
                 """,
+            "oracle_scene_C": """
+                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                그 상황속 사진에 보이듯이, 앞에 상자 형태의 장애물이 세 개 있어(위-아래-위 순서로 지그재그 배치, 크기도 서로 다름).
+                세 장애물을 순서대로 피하면서 지그재그(슬랄롬) 형태로 앞으로 7m 이동할 수 있도록 10개의 좌표를 제시해줘.
+                각 상자로부터 최소 안전마진 0.5m를 확보하되 불필요하게 크게 우회하지 말고 효율적으로 움직여.
+                반드시 세 상자를 모두 피해가야해.
+                """,
         }
 
         DEFAULT_SCENARIO = SCENARIO_TEMPLATES["oracle_scene_A"]
@@ -71,8 +78,10 @@ def main():
             # Image size: 1263x1080. Robot is perfectly centered.
             # New calibrated robot_pos: (631, 540)
             # New scale: 150.0 (Making 1m represent fewer pixels, thus AI plans longer jumps)
-            robot_pos = (631, 540) 
-            scale = 150.0 # 스케일을 낮춰서 AI가 더 시원시원한 경로(m)를 짜게 유도한다.
+            # 씬별로 카메라 시야를 넓힌 경우, oracle_gen.py 의 SCENE_PPM 과 반드시 동일값 유지
+            SCENE_SCALE = {"oracle_scene_C": 90.0}
+            robot_pos = (631, 540)
+            scale = SCENE_SCALE.get(args.scene, 150.0)
         else:
             print(f"Scenario Description: {scenario}")
             robot_pos = None
