@@ -9,7 +9,7 @@ import numpy as np
 
 # Unitree Go2 공식 스펙 기준 관절 최대 연속 토크(N·m). 실험 A/B/C 어디서든
 # 이 상수 하나만 바꾸면 전체 분석에 일괄 반영된다. 값 재검증 필요 시 갱신.
-GO2_TORQUE_LIMIT_NM = 23.7
+GO2_TORQUE_LIMIT_NM = 45.0  # Unitree 공식 스펙: 최대 관절 토크 (largest joint motor 기준)
 
 
 def torque_limit_violation_rate(ctrl: np.ndarray, limit: float = GO2_TORQUE_LIMIT_NM) -> float:
@@ -50,4 +50,27 @@ def summarize(data: dict) -> dict:
         "torque_violation_rate": torque_limit_violation_rate(ctrl),
         "cmd_actual_error_mean": float(cmd_vs_actual_error(ctrl, qfrc_joints).mean()),
         "smoothness": trajectory_smoothness(data["qpos"]),
+    }
+
+def waypoint_tracking_error(qpos_xy: np.ndarray, judged_path_xy: np.ndarray) -> dict:
+    """
+    로봇의 실제 궤적(qpos_xy, world 기준)이 courtroom이 정한 waypoint(judged_path_xy,
+    world 기준으로 이미 변환된 값)에 얼마나 가깝게 접근했는지 측정.
+    (문헌 용어: condition matching / waypoint reaching error)
+
+    qpos_xy: (T, 2) 로봇 실제 xy 궤적
+    judged_path_xy: (N, 2) courtroom이 정한 waypoint들의 world 좌표
+    """
+    closest_dists = []
+    for wp in judged_path_xy:
+        d = np.linalg.norm(qpos_xy - wp[None, :], axis=1)
+        closest_dists.append(d.min())
+    closest_dists = np.array(closest_dists)
+
+    final_goal_error = np.linalg.norm(qpos_xy[-1] - judged_path_xy[-1])
+
+    return {
+        "waypoint_mean_closest_dist": float(closest_dists.mean()),
+        "waypoint_max_closest_dist": float(closest_dists.max()),
+        "final_goal_error": float(final_goal_error),
     }

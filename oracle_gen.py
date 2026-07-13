@@ -39,7 +39,7 @@ PPM_DEFAULT  = 150.0                     # px per meter (기본값)
 SCENE_PPM = {
     "oracle_scene_C": 90.0,
 }
-ROBOT_PX     = (IMG_W / 2, IMG_H / 2)    # (631.5, 540)
+ROBOT_PX     = (IMG_W / 3, IMG_H / 2)    # 로봇을 화면 좌측 1/3에 배치 -> 전방 시야 확보 (기존 중앙 631.5 -> 421)
 CAM_HEIGHT   = 50.0                      # 높을수록 orthographic 근접
 
 def _fovy_for_ppm(ppm):
@@ -58,8 +58,12 @@ def world_to_pixel(wx, wy):
 def _inject_camera(scene_path, fovy_deg):
     """씬 XML 에 top-down 오라클 카메라를 주입한 임시 파일을 같은 폴더에 생성."""
     txt = open(scene_path).read()
+    # 카메라를 world (offset_x, offset_y) 만큼 이동 -> 로봇(world 0,0)이 화면의 ROBOT_PX 위치에 찍힘
+    # 화면 중앙 대비 ROBOT_PX 가 왼쪽/위로 치우친 만큼, 카메라는 world 상에서 그 반대(오른쪽/아래)로 이동해야 함
+    offset_x = (IMG_W / 2 - ROBOT_PX[0]) / PPM   # 픽셀 오프셋 -> 미터 환산
+    offset_y = -(IMG_H / 2 - ROBOT_PX[1]) / PPM
     cam = (f'    <camera name="oracle" mode="fixed" '
-           f'pos="0 0 {CAM_HEIGHT}" xyaxes="1 0 0 0 1 0" '
+           f'pos="{offset_x:.6f} {offset_y:.6f} {CAM_HEIGHT}" xyaxes="1 0 0 0 1 0" '
            f'fovy="{fovy_deg:.6f}"/>\n')
     if 'name="oracle"' not in txt:
         txt = txt.replace("</worldbody>", cam + "  </worldbody>")

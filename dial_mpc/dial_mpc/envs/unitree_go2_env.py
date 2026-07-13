@@ -171,16 +171,33 @@ class UnitreeGo2Env(BaseEnv):
         # 1. __init__에서 JSON으로부터 로드한 (N, 3) 배열 사용
         path = self._vlm_path
         num_points = path.shape[0]
-        
-        # 2. 시간 파라미터 설정 (총 1000스텝 동안 완주 가정)
-        total_time_steps = 400.0
+
+        # 2. 경로 실제 거리 기반으로 총 소요 스텝수를 자동 산출
+        #    (하드코딩된 400 대신, waypoint 간 거리 / 순항속도로 역산 -> n_steps, waypoint 개수와 무관하게
+        #     실제 이동거리만큼만 스텝을 쓰고, 도달 후에는 자연스럽게 정지)
+        seg_lengths = jnp.linalg.norm(jnp.diff(path[:, :2], axis=0), axis=1)  # (num_points-1,)
+        cum_dist = jnp.concatenate([jnp.zeros(1), jnp.cumsum(seg_lengths)])   # 누적거리, (num_points,)
+        total_dist = cum_dist[-1]
+        cruise_speed = 0.8  # m/s, default_vx 와 일치시킴
+        total_time_steps = jnp.maximum(total_dist / cruise_speed / self.dt, 1.0)
+
         current_step = jnp.minimum(state.info["step"], total_time_steps)
-        
-        # 3. 선형 보간 계수 계산
-        progress = (current_step / total_time_steps) * (num_points - 1)
-        idx_low = jnp.floor(progress).astype(jnp.int32)
-        idx_high = jnp.minimum(idx_low + 1, num_points - 1)
-        alpha = progress - idx_low # 보간 가중치 (0.0 ~ 1.0)
+        traveled_dist = jnp.where(
+            total_time_steps > 0,
+            (current_step / total_time_steps) * total_dist,
+            0.0,
+        )
+
+        # 3. traveled_dist 가 속한 구간(segment) 탐색 후 그 구간 안에서 보간
+        idx_low = jnp.clip(
+            jnp.searchsorted(cum_dist, traveled_dist, side="right") - 1, 0, num_points - 2
+        )
+        idx_high = idx_low + 1
+        seg_span = cum_dist[idx_high] - cum_dist[idx_low]
+        alpha = jnp.clip(
+            jnp.where(seg_span > 1e-6, (traveled_dist - cum_dist[idx_low]) / seg_span, 0.0),
+            0.0, 1.0,
+        )
 
         # 4. 실시간 목표 위치(pos_tar) 및 목표 속도(vel_tar) 생성
         # 현재 시점의 목표 위치 (보간된 VLM 상대 좌표)
@@ -269,6 +286,14 @@ class UnitreeGo2Env(BaseEnv):
         R_mat = math.quat_to_3x3(x.rot[self._torso_idx - 1])
         head_vec = jnp.array([0.285, 0.0, 0.0])
         head_pos = pos + jnp.dot(R_mat, head_vec)
+        # test 
+        # to_target_dir - current_dir
+        current_dir = jnp.dot(R_mat, head_vec)
+        dist_current_xy = jnp.linalg.norm(current_dir[:2]) + 1e-5
+        current_vec = (current_dir / dist_current_xy) 
+        dist_target_xy = jnp.linalg.norm(target_vel_world[:2]) + 1e-5
+        target_vel_worldvec = target_vel_world / dist_target_xy
+        reward_world_vec = -jnp.sum((target_vel_worldvec[:2] - current_vec[:2]) ** 2)
         
         # 궤적 추종 보상: 현재 머리(또는 몸체)가 보간된 목표 지점과 얼마나 가까운가?
         # Muse, 여기서 평면(X, Y)만 볼 건지 Z까지 볼 건지 결정해. 보통 평면만 본다.
@@ -313,6 +338,7 @@ class UnitreeGo2Env(BaseEnv):
             + reward_pos * 1.0 # 위치 보상
             + reward_upright * 0.5 # 직립 보상
             + reward_yaw * 0.3 # 방향유지 보상
+            + reward_world_vec
             # + reward_pose * 0.0
             + reward_vel * 1.0 # 선속도 보상
             + reward_ang_vel * 1.0 # 각속도 보상

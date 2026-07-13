@@ -26,6 +26,7 @@ COLS = {
     "qvel": (20, 38),
     "ctrl": (38, 50),
     "qfrc_actuator": (50, 68),
+    "feet_xyz": (68, 80),   # FR(3) FL(3) RR(3) RL(3), 각 x,y,z. 없는 구버전 파일은 로드시 컬럼수 불일치로 에러남.
 }
 
 
@@ -42,14 +43,17 @@ def list_rollout_files(scene_name: str, data_root: str = DATA_ROOT):
 
 
 def load_rollout(states_path: str) -> dict:
-    """states.npy 경로 하나를 읽어 컬럼별로 분리한 dict 로 반환."""
+    """states.npy 경로 하나를 읽어 컬럼별로 분리한 dict 로 반환.
+    68열(구버전, feet_xyz 없음)과 80열(신버전) 둘 다 지원."""
     d = np.load(states_path)
-    if d.shape[1] != 68:
+    n_cols = d.shape[1]
+    if n_cols not in (68, 80):
         raise ValueError(
-            f"예상 컬럼 수(68)와 다름: {states_path} 의 shape={d.shape}. "
+            f"예상치 못한 컬럼 수: {states_path} 의 shape={d.shape} (68 또는 80 이어야 함). "
             "dial_core.py 저장 포맷이 바뀌었는지 확인."
         )
-    return {name: d[:, s:e] for name, (s, e) in COLS.items()}
+    # 이 파일의 실제 컬럼 수 범위 안에 들어가는 필드만 반환 (구버전 파일엔 feet_xyz 없음)
+    return {name: d[:, s:e] for name, (s, e) in COLS.items() if e <= n_cols}
 
 
 def load_latest_rollout(scene_name: str, data_root: str = DATA_ROOT) -> dict:

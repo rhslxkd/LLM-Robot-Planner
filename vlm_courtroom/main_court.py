@@ -68,6 +68,15 @@ def main():
                 각 상자로부터 최소 안전마진 0.5m를 확보하되 불필요하게 크게 우회하지 말고 효율적으로 움직여.
                 반드시 세 상자를 모두 피해가야해.
                 """,
+            "oracle_scene_D": """
+                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                그 상황속 사진에 보이듯이, 로봇의 양옆으로 붉은 벽이 통로를 이루고 있어.
+                통로 안쪽 폭은 로봇 중심선 기준 좌우 약 1.1m로, 로봇의 동적 클리어런스(0.5m)와
+                안전마진(0.5m)을 합한 필요 폭(1.0m)을 각 방향에서 충분히 만족해.
+                다만 좌우로 크게 틀 필요는 없으니, 통로 중앙선(y=0)을 유지하며 곧게 직진해서
+                앞으로 4.2m 이동할 수 있도록 10개의 좌표를 제시해줘.
+                모든 좌표의 y값은 0에 최대한 가깝게(±0.1m 이내) 유지해야 해.
+                """,
         }
 
         DEFAULT_SCENARIO = SCENARIO_TEMPLATES["oracle_scene_A"]
@@ -80,7 +89,7 @@ def main():
             # New scale: 150.0 (Making 1m represent fewer pixels, thus AI plans longer jumps)
             # 씬별로 카메라 시야를 넓힌 경우, oracle_gen.py 의 SCENE_PPM 과 반드시 동일값 유지
             SCENE_SCALE = {"oracle_scene_C": 90.0}
-            robot_pos = (631, 540)
+            robot_pos = (421, 540)  # oracle_gen.py 의 ROBOT_PX(IMG_W/3, IMG_H/2) 와 반드시 동일값 유지
             scale = SCENE_SCALE.get(args.scene, 150.0)
         else:
             print(f"Scenario Description: {scenario}")

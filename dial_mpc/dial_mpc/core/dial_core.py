@@ -330,6 +330,7 @@ def main():
     xdata = []
     for i in range(len(rollout)):
         pipeline_state = rollout[i]
+        feet_xyz = pipeline_state.site_xpos[env._feet_site_id].reshape(-1)  # (4,3) -> (12,) FR/FL/RR/RL 순
         data.append(
             jnp.concatenate(
                 [
@@ -338,6 +339,7 @@ def main():
                     pipeline_state.qvel,            # 로봇의 속도 정보 (18개)
                     pipeline_state.ctrl,             # 로봇의 제어 입력(명령 토크, 12개)
                     pipeline_state.qfrc_actuator,     # 실제 관절 인가 토크(실측, 물리 반영, 18개)
+                    feet_xyz,                          # 발끝 4개(FR/FL/RR/RL) world xyz (12개) - foot contact 검증용
                 ]
             )
         )
