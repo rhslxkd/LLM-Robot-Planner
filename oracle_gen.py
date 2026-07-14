@@ -38,6 +38,7 @@ PPM_DEFAULT  = 150.0                     # px per meter (기본값)
 # 씬별로 카메라 시야를 넓혀야 할 때만 등록. main_court.py 의 SCENE_SCALE 과 반드시 동일값 유지.
 SCENE_PPM = {
     "oracle_scene_C": 90.0,
+    "oracle_scene_E": 90.0,
 }
 ROBOT_PX     = (IMG_W / 3, IMG_H / 2)    # 로봇을 화면 좌측 1/3에 배치 -> 전방 시야 확보 (기존 중앙 631.5 -> 421)
 CAM_HEIGHT   = 50.0                      # 높을수록 orthographic 근접

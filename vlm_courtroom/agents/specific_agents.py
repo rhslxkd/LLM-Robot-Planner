@@ -24,6 +24,7 @@ class CoordinateAgent(VLMAgent):
         
         image_path = context.get('image_path')
         image_description = context.get('image_description', 'A scene with obstacles.')
+        num_waypoints = context.get('num_waypoints', 10)
         
         prompt = f"""
         You are a robot navigation assistant. 
@@ -37,8 +38,12 @@ class CoordinateAgent(VLMAgent):
            - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
    
         2. **Safety Protocol**:
-           - Maintain a minimum **Safety Margin of 0.5m** from any detected obstacle (puddles, objects, curbs).
-           - If a gap between obstacles is narrower than **0.8m**, it is considered UNPASSABLE. Do not attempt to go through.
+           - Maintain a minimum **Safety Margin of 0.3m** from any detected obstacle (puddles, objects, curbs).
+             (Note: this margin is ON TOP OF the 0.5m dynamic clearance radius above, which already
+             accounts for the robot's physical footprint and gait sway. The margin itself only needs
+             to cover residual uncertainty, so do not treat it as an additional large buffer.)
+           - If a gap between obstacles is narrower than **1.6m** (2 x effective clearance radius of 0.8m),
+             it is considered UNPASSABLE. Do not attempt to go through.
 
         3. **Locomotion Constraints**:
            - Sequential Waypoint Distance (Step Length): 
@@ -54,7 +59,8 @@ class CoordinateAgent(VLMAgent):
         
         Task:
         1. Analyze the scene and Explain your path planning logic.
-        2. Generate 10 sequential (x, y) coordinates for a valid path avoiding obstacles.
+        2. Generate EXACTLY {num_waypoints} sequential (x, y) coordinates for a valid path avoiding obstacles.
+           This number ({num_waypoints}) is not optional -- the output list MUST contain exactly {num_waypoints} points.
         
         Output Format:
         ## Scene Analysis
@@ -155,6 +161,7 @@ class JudgeAgent(VLMAgent):
         proposal = context.get('original_proposal', '')
         prosecution = context.get('prosecution_argument', '')
         defense = context.get('defense_argument', '')
+        num_waypoints = context.get('num_waypoints', 10)
         
         prompt = f"""
         You are the Chief Judge.
@@ -169,8 +176,12 @@ class JudgeAgent(VLMAgent):
            - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
    
         2. **Safety Protocol**:
-           - Maintain a minimum **Safety Margin of 0.5m** from any detected obstacle (puddles, objects, curbs).
-           - If a gap between obstacles is narrower than **0.8m**, it is considered UNPASSABLE. Do not attempt to go through.
+           - Maintain a minimum **Safety Margin of 0.3m** from any detected obstacle (puddles, objects, curbs).
+             (Note: this margin is ON TOP OF the 0.5m dynamic clearance radius above, which already
+             accounts for the robot's physical footprint and gait sway. The margin itself only needs
+             to cover residual uncertainty, so do not treat it as an additional large buffer.)
+           - If a gap between obstacles is narrower than **1.6m** (2 x effective clearance radius of 0.8m),
+             it is considered UNPASSABLE. Do not attempt to go through.
 
         3. **Locomotion Constraints**:
            - Sequential Waypoint Distance (Step Length): 
@@ -186,7 +197,9 @@ class JudgeAgent(VLMAgent):
         
         Decide on the FINAL path. You can accept the original or modify it.
         1. State your Verdict and Logic.
-        2. Provide the FINAL list of 10 coordinates (x, y) for the robot.
+        2. Provide the FINAL list of EXACTLY {num_waypoints} coordinates (x, y) for the robot.
+           This number ({num_waypoints}) is not optional -- your final JSON array MUST contain exactly {num_waypoints} points,
+           even if you modify or reject the original proposal.
         3. Explain how these points should be connected (mention Spline).
 
         Important: The coordinates MUST be provided as a JSON array at the end of your response.

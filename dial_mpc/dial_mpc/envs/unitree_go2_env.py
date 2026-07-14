@@ -338,7 +338,7 @@ class UnitreeGo2Env(BaseEnv):
             + reward_pos * 1.0 # 위치 보상
             + reward_upright * 0.5 # 직립 보상
             + reward_yaw * 0.3 # 방향유지 보상
-            + reward_world_vec
+            + reward_world_vec * 1.0
             # + reward_pose * 0.0
             + reward_vel * 1.0 # 선속도 보상
             + reward_ang_vel * 1.0 # 각속도 보상

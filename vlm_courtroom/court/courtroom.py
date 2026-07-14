@@ -12,14 +12,15 @@ class VLMCourt:
         self.judge_agent = JudgeAgent()
         print("Agents initialized.")
 
-    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None, scene_name: str = None):
+    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None, scene_name: str = None, num_waypoints: int = 10):
         print("\n=== 🏛️ VLM Courtroom Simulation Started 🏛️ ===\n")
         
         # 1. Coordinate Agent
         print("--- [Step 1] Coordinate Agent (Analyzing & Mapping) ---")
         coord_msg = self.coordinate_agent.process({
             'image_description': image_description,
-            'image_path': image_path
+            'image_path': image_path,
+            'num_waypoints': num_waypoints
         })
         print(f"📍 Proposal:\n{coord_msg.content}\n")
 
@@ -41,7 +42,8 @@ class VLMCourt:
         judge_msg = self.judge_agent.process({
             'original_proposal': coord_msg.content,
             'prosecution_argument': pros_msg.content,
-            'defense_argument': def_msg.content
+            'defense_argument': def_msg.content,
+            'num_waypoints': num_waypoints
         })
         print(f"👨‍⚖️ Verdict:\n{judge_msg.content}\n")
         
