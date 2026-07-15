@@ -1,6 +1,6 @@
 # DIAL-MPC
 seed: 0
-output_dir: data/oracle_scene_E
+output_dir: data/oracle_scene_E_viz
 n_steps: 650
 
 env_name: unitree_go2_walk
@@ -28,5 +28,5 @@ ramp_up_time: 1.0
 gait: trot
 
 # Oracle scene wiring
-scene_xml: oracle_scene_E.xml
+scene_xml: oracle_scene_E_viz.xml
 vlm_path_json: data/oracle_scene_E/last_judged_path.json

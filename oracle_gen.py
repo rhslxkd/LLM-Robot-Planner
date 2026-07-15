@@ -39,6 +39,7 @@ PPM_DEFAULT  = 150.0                     # px per meter (기본값)
 SCENE_PPM = {
     "oracle_scene_C": 90.0,
     "oracle_scene_E": 90.0,
+    "oracle_scene_D": 90.0,
 }
 ROBOT_PX     = (IMG_W / 3, IMG_H / 2)    # 로봇을 화면 좌측 1/3에 배치 -> 전방 시야 확보 (기존 중앙 631.5 -> 421)
 CAM_HEIGHT   = 50.0                      # 높을수록 orthographic 근접
@@ -85,7 +86,9 @@ def _report_obstacles(model):
 def render_scene(scene_path):
     global PPM, FOVY_DEG
     stem = os.path.splitext(os.path.basename(scene_path))[0]
-    PPM = SCENE_PPM.get(stem, PPM_DEFAULT)
+    # _viz 접미사가 붙은 씬도 원본 씬과 동일한 PPM을 쓰도록 조회
+    lookup_stem = stem[:-4] if stem.endswith("_viz") else stem
+    PPM = SCENE_PPM.get(lookup_stem, PPM_DEFAULT)
     FOVY_DEG = _fovy_for_ppm(PPM)
     scene_out_dir = os.path.join(DATA_DIR, stem)
     os.makedirs(scene_out_dir, exist_ok=True)

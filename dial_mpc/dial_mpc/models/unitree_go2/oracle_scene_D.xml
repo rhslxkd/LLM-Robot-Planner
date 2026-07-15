@@ -1,4 +1,4 @@
-<mujoco model="go2 oracle scene D (narrowed for updated safety margin)">
+<mujoco model="go2 oracle scene D (extreme narrow corridor, below courtroom rule - experimental)">
   <include file="mjx_go2_robot_only.xml"/>
 
   <statistic center="0 0 0.1" extent="0.8"/>
@@ -22,14 +22,15 @@
     <light pos="0 0 5" dir="0 0 -1" directional="true" diffuse="1 1 1" ambient="0.4 0.4 0.4" specular="0.2 0.2 0.2"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
-    <!-- 통로 안쪽 폭 1.8m (새 안전마진 기준: 로봇반경0.5+마진0.3=클리어런스0.8m,
-         최소통과폭 1.6m 대비 0.2m 여유 확보. 기존 2.2m 폭보다 좁혀서 새 기준을 반영함) -->
-    <body name="left_wall" pos="2.4 0.975 0.3">
-      <geom name="left_wall_geom" type="box" size="1.6 0.15 0.3" material="wall_material"/>
+    <!-- 실험: 통로 안쪽 폭 1.0m. 로봇 실제 몸통폭(0.31m)보다는 넉넉하지만,
+         courtroom의 자체 규칙(최소 1.6m)보다는 0.6m 부족, Judge가 기각할 가능성 높음,
+         기각되면 그 자체로 courtroom의 물리적 모순 감지 사례로 기록 -->
+    <body name="left_wall" pos="3.4 0.575 0.3">
+      <geom name="left_wall_geom" type="box" size="2.6 0.15 0.3" material="wall_material"/>
     </body>
 
-    <body name="right_wall" pos="2.4 -0.975 0.3">
-      <geom name="right_wall_geom" type="box" size="1.6 0.15 0.3" material="wall_material"/>
+    <body name="right_wall" pos="3.4 -0.575 0.3">
+      <geom name="right_wall_geom" type="box" size="2.6 0.15 0.3" material="wall_material"/>
     </body>
   </worldbody>
 </mujoco>
