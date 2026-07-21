@@ -1,7 +1,7 @@
 # DIAL-MPC
 seed: 0
-output_dir: data/unitree_go2_trot
-n_steps: 400
+output_dir: data/oracle_scene_C_viz
+n_steps: 600
 
 env_name: unitree_go2_walk
 Nsample: 2048
@@ -26,3 +26,7 @@ default_vy: 0.0
 default_vyaw: 0.0
 ramp_up_time: 1.0
 gait: trot
+
+# Oracle scene wiring
+scene_xml: oracle_scene_C_viz.xml
+vlm_path_json: data/oracle_scene_C/last_judged_path.json

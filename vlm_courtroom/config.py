@@ -7,7 +7,7 @@ from google.oauth2 import service_account
 
 # Determine the project root
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-KEY_PATH = "/mnt/d/_SECRETS/keys/vertex/google_vertex_key.json"
+KEY_PATH = "/home/user/hyeonsoo/Keys/Key/google_vertex_key.json"
 PROJECT_ID = "kaggle-genai-477714"
 LOCATION = "us-central1"
 

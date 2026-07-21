@@ -1,6 +1,6 @@
 # DIAL-MPC
 seed: 0
-output_dir: allegro_reorient
+output_dir: data/allegro_reorient
 n_steps: 200
 
 env_name: allegro_reorient

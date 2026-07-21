@@ -1,6 +1,6 @@
 # DIAL-MPC
 seed: 0
-output_dir: unitree_h1_push_crate
+output_dir: data/unitree_h1_push_crate
 n_steps: 300
 
 env_name: unitree_h1_push_crate

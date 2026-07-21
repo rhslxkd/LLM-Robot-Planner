@@ -21,7 +21,7 @@ from mujoco import mjx
 
 from dial_mpc.envs.base_env import BaseEnv, BaseEnvConfig
 from dial_mpc.utils.function_utils import global_to_body_velocity, get_foot_step
-from dial_mpc.utils.io_utils import get_model_path
+from dial_mpc.utils.io_utils import get_model_path, resolve_output_dir
 
 
 @dataclass
@@ -33,6 +33,8 @@ class UnitreeGo2EnvConfig(BaseEnvConfig): # 이건 dataclass BaseEnvConfig를 �
     default_vyaw: float = 0.0 # 기본 각속도 설정
     ramp_up_time: float = 2.0 # 속도 증가 시간 설정
     gait: str = "trot" # 로봇의 보행 패턴 설정
+    scene_xml: str = "mjx_scene_force.xml" # 로드할 씬 XML (오라클 씬 배선용, 기본값은 기존 동작 유지)
+    vlm_path_json: Union[str, None] = None # VLM 경로 JSON 경로. None이면 기존 하드코딩 폴백 경로 사용
 
 
 class UnitreeGo2Env(BaseEnv):
@@ -95,9 +97,12 @@ class UnitreeGo2Env(BaseEnv):
         self._feet_site_id = jnp.array(feet_site_id)
 
         # --- [VLM 경로 로드] last_judged_path.json → (N, 3) 배열로 변환 ---
-        _vlm_json_path = os.path.normpath(os.path.join(
-            os.path.dirname(__file__), '..', '..', '..', 'vlm_courtroom', 'outputs', 'last_judged_path.json'
-        ))
+        if config.vlm_path_json is not None:
+            _vlm_json_path = resolve_output_dir(config.vlm_path_json)
+        else:
+            _vlm_json_path = os.path.normpath(os.path.join(
+                os.path.dirname(__file__), '..', '..', '..', 'vlm_courtroom', 'outputs', 'last_judged_path.json'
+            ))
         try:
             with open(_vlm_json_path, 'r') as f:
                 _data = json.load(f)
@@ -109,7 +114,7 @@ class UnitreeGo2Env(BaseEnv):
         self._vlm_path = jnp.array(_path_np)
 
     def make_system(self, config: UnitreeGo2EnvConfig) -> System:
-        model_path = get_model_path("unitree_go2", "mjx_scene_force.xml")
+        model_path = get_model_path("unitree_go2", config.scene_xml)
         sys = mjcf.load(model_path)
         sys = sys.tree_replace({"opt.timestep": config.timestep})
         return sys
@@ -166,16 +171,33 @@ class UnitreeGo2Env(BaseEnv):
         # 1. __init__에서 JSON으로부터 로드한 (N, 3) 배열 사용
         path = self._vlm_path
         num_points = path.shape[0]
-        
-        # 2. 시간 파라미터 설정 (총 1000스텝 동안 완주 가정)
-        total_time_steps = 400.0
+
+        # 2. 경로 실제 거리 기반으로 총 소요 스텝수를 자동 산출
+        #    (하드코딩된 400 대신, waypoint 간 거리 / 순항속도로 역산 -> n_steps, waypoint 개수와 무관하게
+        #     실제 이동거리만큼만 스텝을 쓰고, 도달 후에는 자연스럽게 정지)
+        seg_lengths = jnp.linalg.norm(jnp.diff(path[:, :2], axis=0), axis=1)  # (num_points-1,)
+        cum_dist = jnp.concatenate([jnp.zeros(1), jnp.cumsum(seg_lengths)])   # 누적거리, (num_points,)
+        total_dist = cum_dist[-1]
+        cruise_speed = 0.8  # m/s, default_vx 와 일치시킴
+        total_time_steps = jnp.maximum(total_dist / cruise_speed / self.dt, 1.0)
+
         current_step = jnp.minimum(state.info["step"], total_time_steps)
-        
-        # 3. 선형 보간 계수 계산
-        progress = (current_step / total_time_steps) * (num_points - 1)
-        idx_low = jnp.floor(progress).astype(jnp.int32)
-        idx_high = jnp.minimum(idx_low + 1, num_points - 1)
-        alpha = progress - idx_low # 보간 가중치 (0.0 ~ 1.0)
+        traveled_dist = jnp.where(
+            total_time_steps > 0,
+            (current_step / total_time_steps) * total_dist,
+            0.0,
+        )
+
+        # 3. traveled_dist 가 속한 구간(segment) 탐색 후 그 구간 안에서 보간
+        idx_low = jnp.clip(
+            jnp.searchsorted(cum_dist, traveled_dist, side="right") - 1, 0, num_points - 2
+        )
+        idx_high = idx_low + 1
+        seg_span = cum_dist[idx_high] - cum_dist[idx_low]
+        alpha = jnp.clip(
+            jnp.where(seg_span > 1e-6, (traveled_dist - cum_dist[idx_low]) / seg_span, 0.0),
+            0.0, 1.0,
+        )
 
         # 4. 실시간 목표 위치(pos_tar) 및 목표 속도(vel_tar) 생성
         # 현재 시점의 목표 위치 (보간된 VLM 상대 좌표)
@@ -264,6 +286,14 @@ class UnitreeGo2Env(BaseEnv):
         R_mat = math.quat_to_3x3(x.rot[self._torso_idx - 1])
         head_vec = jnp.array([0.285, 0.0, 0.0])
         head_pos = pos + jnp.dot(R_mat, head_vec)
+        # test 
+        # to_target_dir - current_dir
+        current_dir = jnp.dot(R_mat, head_vec)
+        dist_current_xy = jnp.linalg.norm(current_dir[:2]) + 1e-5
+        current_vec = (current_dir / dist_current_xy) 
+        dist_target_xy = jnp.linalg.norm(target_vel_world[:2]) + 1e-5
+        target_vel_worldvec = target_vel_world / dist_target_xy
+        reward_world_vec = -jnp.sum((target_vel_worldvec[:2] - current_vec[:2]) ** 2)
         
         # 궤적 추종 보상: 현재 머리(또는 몸체)가 보간된 목표 지점과 얼마나 가까운가?
         # Muse, 여기서 평면(X, Y)만 볼 건지 Z까지 볼 건지 결정해. 보통 평면만 본다.
@@ -308,6 +338,7 @@ class UnitreeGo2Env(BaseEnv):
             + reward_pos * 1.0 # 위치 보상
             + reward_upright * 0.5 # 직립 보상
             + reward_yaw * 0.3 # 방향유지 보상
+            + reward_world_vec * 1.0
             # + reward_pose * 0.0
             + reward_vel * 1.0 # 선속도 보상
             + reward_ang_vel * 1.0 # 각속도 보상

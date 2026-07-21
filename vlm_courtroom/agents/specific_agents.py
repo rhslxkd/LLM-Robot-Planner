@@ -1,34 +1,11 @@
-
 import json
-import chromadb
 from typing import List, Dict, Any
 from vlm_courtroom.agents.base_agent import VLMAgent, Message
 
-class CoordinateAgent(VLMAgent):
-    def __init__(self, name="CoordinateAgent", reset_db=False):
-        super().__init__(name, "Coordinate Generator", model_role="COORDINATE")
-        # Initialize ChromaDB (Persistent storage)
-        self.chroma_client = chromadb.PersistentClient(path="./chroma_db")
-        
-        if reset_db:
-            try:
-                self.chroma_client.delete_collection("scene_coordinates")
-                print(f"[{self.name}] 🗑️ Existing VectorDB collection deleted (Reset).")
-            except Exception:
-                pass # Collection might not exist
 
-        self.collection = self.chroma_client.get_or_create_collection(name="scene_coordinates")
-
-    def process(self, context: Dict[str, Any]) -> Message:
-        print(f"[{self.name}] Analyzing image and generating coordinates...")
-        
-        image_path = context.get('image_path')
-        image_description = context.get('image_description', 'A scene with obstacles.')
-        
-        prompt = f"""
-        You are a robot navigation assistant. 
-        Analyze the scene (image or description provided): {image_description}
-        Identify obstacles (e.g., puddles, cars).
+# 4개 agent가 공유하는 물리 제약 블록. 씬 파라미터(clearance, margin 등)가 바뀌면
+# 여기 한 곳만 고치면 Coordinate/Prosecutor/Defense/Judge 전부에 일괄 반영된다.
+ROBOT_PHYSICAL_CONSTRAINTS = """
         ### [CRITICAL: Robot Physical Constraints - Unitree Go2]
         You MUST adhere to the following physical constraints for path planning:
 
@@ -37,8 +14,12 @@ class CoordinateAgent(VLMAgent):
            - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
    
         2. **Safety Protocol**:
-           - Maintain a minimum **Safety Margin of 0.5m** from any detected obstacle (puddles, objects, curbs).
-           - If a gap between obstacles is narrower than **0.8m**, it is considered UNPASSABLE. Do not attempt to go through.
+           - Maintain a minimum **Safety Margin of 0.3m** from any detected obstacle (puddles, objects, curbs).
+             (Note: this margin is ON TOP OF the 0.5m dynamic clearance radius above, which already
+             accounts for the robot's physical footprint and gait sway. The margin itself only needs
+             to cover residual uncertainty, so do not treat it as an additional large buffer.)
+           - If a gap between obstacles is narrower than **1.6m** (2 x effective clearance radius of 0.8m),
+             it is considered UNPASSABLE. Do not attempt to go through.
 
         3. **Locomotion Constraints**:
            - Sequential Waypoint Distance (Step Length): 
@@ -51,10 +32,36 @@ class CoordinateAgent(VLMAgent):
            - Use the robot's current position as (0, 0).
            - Forward progress must be along the **+X axis**.
            - Side-to-side movement is along the **Y axis**.
+"""
+
+
+class CoordinateAgent(VLMAgent):
+    def __init__(self, name="CoordinateAgent"):
+        super().__init__(name, "Coordinate Generator", model_role="COORDINATE")
+        # NOTE: ChromaDB(VectorDB) 저장 로직 제거됨.
+        # 과거엔 self.collection.add()로 제안 좌표를 저장했으나, 어디서도 query()로
+        # 조회하지 않아 실질적으로 아무 기능이 없는 오버헤드였음(임베딩 계산 + 디스크 I/O
+        # + case가 쌓일수록 느려지는 collection.get() 전체 스캔). 4-agent 간 정보 공유는
+        # courtroom.py의 순차적 컨텍스트 전달(dict)로 이미 이루어지고 있으므로 제거.
+        # 최종 판결 좌표는 courtroom.py의 visualize_path()에서 last_judged_path.json으로
+        # 영속 저장된다.
+
+    def process(self, context: Dict[str, Any]) -> Message:
+        print(f"[{self.name}] Analyzing image and generating coordinates...")
         
+        image_path = context.get('image_path')
+        image_description = context.get('image_description', 'A scene with obstacles.')
+        num_waypoints = context.get('num_waypoints', 10)
+        
+        prompt = f"""
+        You are a robot navigation assistant. 
+        Analyze the scene (image or description provided): {image_description}
+        Identify obstacles (e.g., puddles, cars).
+        {ROBOT_PHYSICAL_CONSTRAINTS}
         Task:
         1. Analyze the scene and Explain your path planning logic.
-        2. Generate 10 sequential (x, y) coordinates for a valid path avoiding obstacles.
+        2. Generate EXACTLY {num_waypoints} sequential (x, y) coordinates for a valid path avoiding obstacles.
+           This number ({num_waypoints}) is not optional -- the output list MUST contain exactly {num_waypoints} points.
         
         Output Format:
         ## Scene Analysis
@@ -79,14 +86,6 @@ class CoordinateAgent(VLMAgent):
             end_idx = response_text.rfind(']') + 1
             if start_idx != -1 and end_idx != -1:
                 coordinates = json.loads(response_text[start_idx:end_idx])
-                
-                # Save to ChromaDB
-                self.collection.add(
-                    documents=[json.dumps(coordinates)],
-                    metadatas=[{"context": image_description, "sender": self.name}],
-                    ids=[f"path_{len(self.collection.get()['ids']) + 1}"]
-                )
-                print(f"[{self.name}] Coordinates saved to ChromaDB.")
             else:
                 print(f"[{self.name}] ⚠️ Could not parse coordinates from output.")
                 coordinates = []
@@ -108,10 +107,15 @@ class ProsecutorAgent(VLMAgent):
         prompt = f"""
         You are a Prosecutor in a navigation court.
         Review the proposed path: {previous_proposal}
-        Your goal is to find faults or risks (e.g., too close to obstacles, slipping risk).
+        {ROBOT_PHYSICAL_CONSTRAINTS}
+        Your goal is to find faults or risks using the constraints above as evidence
+        (e.g., "the gap near waypoint 3 is only 1.2m wide, which violates the 1.6m
+        minimum passable width" or "the turn between waypoint 5 and 6 exceeds the
+        safe turning radius"). Do not rely on vague impressions -- cite specific
+        waypoints and, where possible, estimated distances against the constraints.
         Provide:
         1. One strong Opinion (Critical).
-        2. Three Reasons (Evidence based on safety).
+        2. Three Reasons (Evidence based on the physical constraints and safety).
         Format clearly.
 
         Please respond in Korean.
@@ -134,9 +138,15 @@ class DefenseAttorneyAgent(VLMAgent):
         You are a Defense Attorney in a navigation court.
         Defend the proposed path: {previous_proposal}
         Counter the prosecution's argument: {prosecution_arg}
+        {ROBOT_PHYSICAL_CONSTRAINTS}
+        When countering, use the constraints above to show the path actually satisfies
+        them (e.g., "the flagged gap is in fact 1.8m wide, above the 1.6m minimum") --
+        do not simply assert efficiency without checking the prosecution's specific claim
+        against these numbers first. If the prosecution's safety concern is valid, concede
+        it and argue for a minimal correction instead of blanket disagreement.
         Provide:
         1. One strong Opinion (Supportive).
-        2. Three Reasons (Efficiency, feasibility).
+        2. Three Reasons (Efficiency, feasibility, and constraint compliance).
         Format clearly.
 
         Please respond in Korean.
@@ -155,38 +165,19 @@ class JudgeAgent(VLMAgent):
         proposal = context.get('original_proposal', '')
         prosecution = context.get('prosecution_argument', '')
         defense = context.get('defense_argument', '')
+        num_waypoints = context.get('num_waypoints', 10)
         
         prompt = f"""
         You are the Chief Judge.
         Evaluate the Original Path: {proposal}
         Prosecution Argument: {prosecution}
         Defense Argument: {defense}
-        ### [CRITICAL: Robot Physical Constraints - Unitree Go2]
-        You MUST adhere to the following physical constraints for path planning:
-
-        1. **Physical Footprint**: 
-           - Body Dimensions: 0.7m (Length) x 0.31m (Width).
-           - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
-   
-        2. **Safety Protocol**:
-           - Maintain a minimum **Safety Margin of 0.5m** from any detected obstacle (puddles, objects, curbs).
-           - If a gap between obstacles is narrower than **0.8m**, it is considered UNPASSABLE. Do not attempt to go through.
-
-        3. **Locomotion Constraints**:
-           - Sequential Waypoint Distance (Step Length): 
-             - MIN: 0.4m (to prevent gait instability)
-             - MAX: 1.0m (to prevent excessive acceleration)
-             - RECOMMENDED: 0.6m - 0.7m
-           - Turning Radius: Avoid sharp 90-degree turns. Use smooth arcs with a radius of at least **0.5m**.
-
-        4. **Coordinate Mapping Strategy**:
-           - Use the robot's current position as (0, 0).
-           - Forward progress must be along the **+X axis**.
-           - Side-to-side movement is along the **Y axis**.
-        
+        {ROBOT_PHYSICAL_CONSTRAINTS}
         Decide on the FINAL path. You can accept the original or modify it.
         1. State your Verdict and Logic.
-        2. Provide the FINAL list of 10 coordinates (x, y) for the robot.
+        2. Provide the FINAL list of EXACTLY {num_waypoints} coordinates (x, y) for the robot.
+           This number ({num_waypoints}) is not optional -- your final JSON array MUST contain exactly {num_waypoints} points,
+           even if you modify or reject the original proposal.
         3. Explain how these points should be connected (mention Spline).
 
         Important: The coordinates MUST be provided as a JSON array at the end of your response.

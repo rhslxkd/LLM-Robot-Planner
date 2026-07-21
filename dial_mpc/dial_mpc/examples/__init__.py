@@ -6,6 +6,7 @@ examples = [
     "unitree_go2_seq_jump",
     "unitree_go2_crate_climb",
     "allegro_reorient",
+    "oracle_scene_A",
 ]
 
 deploy_examples = [

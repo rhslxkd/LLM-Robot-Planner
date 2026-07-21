@@ -22,7 +22,7 @@ from brax.io import html
 import brax.envs as brax_envs
 
 import dial_mpc.envs as dial_envs
-from dial_mpc.utils.io_utils import get_example_path, load_dataclass_from_dict
+from dial_mpc.utils.io_utils import get_example_path, load_dataclass_from_dict, resolve_output_dir
 from dial_mpc.examples import examples
 from dial_mpc.core.dial_config import DialConfig
 
@@ -231,6 +231,7 @@ def main():
 
     # 얘가 YAML의 텍스트를 파이썬의 DialCOnfig와 env_config라는 객체로 변환
     dial_config = load_dataclass_from_dict(DialConfig, config_dict)
+    dial_config.output_dir = resolve_output_dir(dial_config.output_dir)
     rng = jax.random.PRNGKey(seed=dial_config.seed)
 
     # find env config
@@ -329,13 +330,16 @@ def main():
     xdata = []
     for i in range(len(rollout)):
         pipeline_state = rollout[i]
+        feet_xyz = pipeline_state.site_xpos[env._feet_site_id].reshape(-1)  # (4,3) -> (12,) FR/FL/RR/RL 순
         data.append(
             jnp.concatenate(
                 [
                     jnp.array([i]),
-                    pipeline_state.qpos, # 로봇의 위치 및 자세 정보(19개)
-                    pipeline_state.qvel, # 로봇의 속도 정보 (18개)
-                    pipeline_state.ctrl, # 로봇의 제어 입력 (12개)
+                    pipeline_state.qpos,           # 로봇의 위치 및 자세 정보(19개)
+                    pipeline_state.qvel,            # 로봇의 속도 정보 (18개)
+                    pipeline_state.ctrl,             # 로봇의 제어 입력(명령 토크, 12개)
+                    pipeline_state.qfrc_actuator,     # 실제 관절 인가 토크(실측, 물리 반영, 18개)
+                    feet_xyz,                          # 발끝 4개(FR/FL/RR/RL) world xyz (12개) - foot contact 검증용
                 ]
             )
         )

@@ -1,25 +1,25 @@
 
 from vlm_courtroom.agents.specific_agents import CoordinateAgent, ProsecutorAgent, DefenseAttorneyAgent, JudgeAgent
-import chromadb
 import os
 
 class VLMCourt:
-    def __init__(self, reset_db: bool = False):
+    def __init__(self):
         print("initializing VLMCourt...")
-        self.coordinate_agent = CoordinateAgent(reset_db=reset_db)
+        self.coordinate_agent = CoordinateAgent()
         self.prosecutor_agent = ProsecutorAgent()
         self.defense_agent = DefenseAttorneyAgent()
         self.judge_agent = JudgeAgent()
         print("Agents initialized.")
 
-    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None):
+    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None, scene_name: str = None, num_waypoints: int = 10):
         print("\n=== 🏛️ VLM Courtroom Simulation Started 🏛️ ===\n")
         
         # 1. Coordinate Agent
         print("--- [Step 1] Coordinate Agent (Analyzing & Mapping) ---")
         coord_msg = self.coordinate_agent.process({
             'image_description': image_description,
-            'image_path': image_path
+            'image_path': image_path,
+            'num_waypoints': num_waypoints
         })
         print(f"📍 Proposal:\n{coord_msg.content}\n")
 
@@ -41,19 +41,20 @@ class VLMCourt:
         judge_msg = self.judge_agent.process({
             'original_proposal': coord_msg.content,
             'prosecution_argument': pros_msg.content,
-            'defense_argument': def_msg.content
+            'defense_argument': def_msg.content,
+            'num_waypoints': num_waypoints
         })
         print(f"👨‍⚖️ Verdict:\n{judge_msg.content}\n")
         
         # 5. Visualization (if image_path is provided)
         coordinates = []
         if image_path:
-            coordinates = self.visualize_path(image_path, judge_msg.content, robot_pos, scale)
+            coordinates = self.visualize_path(image_path, judge_msg.content, robot_pos, scale, scene_name)
 
         print("=== 🏛️ Case Closed 🏛️ ===")
         return judge_msg, coordinates
 
-    def visualize_path(self, image_path: str, verdict_text: str, robot_pos: tuple = None, scale: float = None):
+    def visualize_path(self, image_path: str, verdict_text: str, robot_pos: tuple = None, scale: float = None, scene_name: str = None):
         try:
             import matplotlib.pyplot as plt
             import matplotlib.image as mpimg
@@ -88,7 +89,14 @@ class VLMCourt:
             # Determine project root
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
-            project_output_dir = os.path.join(project_root, "outputs")
+            repo_root = os.path.dirname(project_root)
+
+            if scene_name:
+                # Scene-scoped output: <repo_root>/data/<scene_name>/last_judged_path.json
+                project_output_dir = os.path.join(repo_root, "data", scene_name)
+            else:
+                # Backward-compatible default: vlm_courtroom/outputs/
+                project_output_dir = os.path.join(project_root, "outputs")
             os.makedirs(project_output_dir, exist_ok=True)
 
             # Save coordinates to a JSON file for automation
@@ -128,8 +136,8 @@ class VLMCourt:
                     # For brax.png, robot faces RIGHT. 
                     # So x+ is Image Right. y+ is Image Up (Left of robot).
                     
-                    px = rx - (c['x'] * scale)
-                    py = ry + (c['y'] * scale) 
+                    px = rx + (c['x'] * scale)
+                    py = ry - (c['y'] * scale) 
                     plot_xs.append(px)
                     plot_ys.append(py)
                 
@@ -165,26 +173,31 @@ class VLMCourt:
             # Determine project root based on this file's location
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
-            
-            project_input_dir = os.path.join(project_root, "inputs")
+            repo_root = os.path.dirname(project_root)
+
+            if scene_name:
+                # Scene-scoped: <repo_root>/data/<scene_name>/ (shared with the JSON output above)
+                project_input_dir = os.path.join(repo_root, "data", scene_name)
+            else:
+                # Backward-compatible default: vlm_courtroom/inputs/
+                project_input_dir = os.path.join(project_root, "inputs")
             os.makedirs(project_input_dir, exist_ok=True)
-            
+
             target_input_path = os.path.join(project_input_dir, input_filename)
-            
+
             # Only copy if source and destination are different
             if os.path.abspath(image_path) != os.path.abspath(target_input_path):
                 shutil.copy2(image_path, target_input_path)
                 print(f"📂 Copied input image to: {target_input_path}")
             else:
                 print(f"📂 Input image is already in project inputs: {target_input_path}")
-            
+
             # 2. Save Result to Project Outputs Directory (ONLY)
-            # Determine project root based on this file's location: .../vlm_courtroom/court/courtroom.py
-            # We want .../vlm_courtroom/outputs
-            current_file_dir = os.path.dirname(os.path.abspath(__file__)) # .../vlm_courtroom/court
-            project_root = os.path.dirname(current_file_dir) # .../vlm_courtroom
-            
-            project_output_dir = os.path.join(project_root, "outputs")
+            if scene_name:
+                project_output_dir = os.path.join(repo_root, "data", scene_name)
+            else:
+                # Backward-compatible default: vlm_courtroom/outputs/
+                project_output_dir = os.path.join(project_root, "outputs")
             os.makedirs(project_output_dir, exist_ok=True)
             
             output_filename = f"{filename_no_ext}_verdict_{timestamp}{ext}"

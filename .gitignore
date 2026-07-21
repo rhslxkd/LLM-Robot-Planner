@@ -19,6 +19,7 @@ chroma_db/
 vlm_courtroom/outputs/
 vlm_courtroom/inputs/
 vlm_courtroom/chroma_db/
+data/
 *.png
 
 __pycache__/
