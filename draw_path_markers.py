@@ -1,16 +1,23 @@
 """
 draw_path_markers.py ─ VLM 경로를 씬 XML + YAML에 시각 마커로 삽입
 
-data/<scene>/last_judged_path.json 의 waypoint 들을
-씬 XML 복제본(oracle_scene_X_viz.xml)에 노란 구슬 + 빨간 연결선으로 그려넣고,
-바로 실행 가능한 YAML(oracle_scene_X_viz.yaml)까지 함께 생성한다.
+data/<scene>/<variant>/last_judged_path.json 의 waypoint 들을
+씬 XML 복제본(<scene>_<variant>_viz.xml)에 노란 구슬 + 빨간 연결선으로 그려넣고,
+바로 실행 가능한 YAML(<scene>_<variant>_viz.yaml)까지 함께 생성한다.
 마커는 contype=0 conaffinity=0 이라 물리에 전혀 영향 없음 (순수 시각용).
 
+variant는 courtroom.py/main_court.py가 쓰는 백엔드/모델 식별자와 동일하게 맞춘다
+(예: "gemini", "ollama_qwen2_5vl_7b"). 같은 씬을 여러 백엔드/모델로 돌려도
+파일명이 겹치지 않도록 XML/YAML/output_dir 전부 <scene>_<variant> 조합으로 구분한다.
+
 사용법:
-    python draw_path_markers.py oracle_scene_A
-    -> models/unitree_go2/oracle_scene_A_viz.xml 생성
-    -> examples/oracle_scene_A_viz.yaml 생성
-    -> python dial_mpc/dial_mpc/core/dial_core.py --example oracle_scene_A_viz 로 바로 실행
+    python draw_path_markers.py oracle_scene_A gemini
+    -> models/unitree_go2/oracle_scene_A_gemini_viz.xml 생성
+    -> examples/oracle_scene_A_gemini_viz.yaml 생성 (output_dir: data/oracle_scene_A/gemini/viz)
+    -> python dial_mpc/dial_mpc/core/dial_core.py --example oracle_scene_A_gemini_viz 로 바로 실행
+
+    python draw_path_markers.py oracle_scene_A ollama_qwen2_5vl_7b
+    -> 위와 동일한 패턴으로 별도 파일 생성, 서로 덮어쓰지 않음
 """
 import os, sys, json
 
@@ -46,36 +53,46 @@ def build_marker_xml(path_points):
     return "\n".join(lines)
 
 
-def make_viz_yaml(scene):
-    """원본 YAML을 복사해 scene_xml, output_dir 만 viz 버전으로 교체."""
+def make_viz_yaml(scene, variant, viz_tag):
+    """원본 YAML(scene 기준, 백엔드와 무관한 공용 템플릿)을 복사해
+    scene_xml, output_dir 만 <scene>_<variant>_viz 버전으로 교체."""
     src = os.path.join(EXAMPLES_DIR, f"{scene}.yaml")
-    dst = os.path.join(EXAMPLES_DIR, f"{scene}_viz.yaml")
+    dst = os.path.join(EXAMPLES_DIR, f"{viz_tag}.yaml")
     assert os.path.exists(src), f"원본 YAML 없음: {src}"
 
     txt = open(src).read()
-    txt = txt.replace(f"scene_xml: {scene}.xml", f"scene_xml: {scene}_viz.xml")
-    txt = txt.replace(f"output_dir: data/{scene}", f"output_dir: data/{scene}_viz")
+    txt = txt.replace(f"scene_xml: {scene}.xml", f"scene_xml: {viz_tag}.xml")
+    # output_dir은 courtroom.py의 중첩 규칙(data/<scene>/<variant>/)을 그대로 따라가되,
+    # 시각화 결과는 그 아래 viz/ 서브폴더에 따로 모아서 last_judged_path.json 등과 안 섞이게 한다.
+    txt = txt.replace(f"output_dir: data/{scene}", f"output_dir: data/{scene}/{variant}/viz")
     open(dst, "w").write(txt)
     return dst
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("사용법: python draw_path_markers.py <scene_name>  (예: oracle_scene_A)")
+    if len(sys.argv) < 3:
+        print("사용법: python draw_path_markers.py <scene_name> <variant>")
+        print("  예: python draw_path_markers.py oracle_scene_A gemini")
+        print("      python draw_path_markers.py oracle_scene_A ollama_qwen2_5vl_7b")
         return
     scene = sys.argv[1]
+    variant = sys.argv[2]
+    viz_tag = f"{scene}_{variant}_viz"  # 파일명 충돌 방지용 조합 태그
 
-    json_path = os.path.join(DATA_ROOT, scene, "last_judged_path.json")
+    json_path = os.path.join(DATA_ROOT, scene, variant, "last_judged_path.json")
     scene_xml = os.path.join(MODELS_DIR, f"{scene}.xml")
-    out_xml   = os.path.join(MODELS_DIR, f"{scene}_viz.xml")
+    out_xml   = os.path.join(MODELS_DIR, f"{viz_tag}.xml")
 
-    assert os.path.exists(json_path), f"경로 JSON 없음: {json_path} (courtroom 먼저 실행할 것)"
+    assert os.path.exists(json_path), (
+        f"경로 JSON 없음: {json_path} "
+        f"(main_court.py --scene {scene} --backend ... 먼저 실행할 것)"
+    )
     assert os.path.exists(scene_xml), f"씬 XML 없음: {scene_xml}"
 
     with open(json_path) as f:
         path = json.load(f)
     pts = [(p["x"], p["y"]) for p in path]
-    print(f"[{scene}] waypoint {len(pts)}개 로드")
+    print(f"[{scene}/{variant}] waypoint {len(pts)}개 로드")
 
     txt = open(scene_xml).read()
     marker_block = build_marker_xml(pts)
@@ -85,9 +102,9 @@ def main():
     open(out_xml, "w").write(txt)
     print(f"✅ XML 생성: {out_xml}")
 
-    yaml_path = make_viz_yaml(scene)
+    yaml_path = make_viz_yaml(scene, variant, viz_tag)
     print(f"✅ YAML 생성: {yaml_path}")
-    print(f"   실행: python dial_mpc/dial_mpc/core/dial_core.py --example {scene}_viz")
+    print(f"   실행: python dial_mpc/dial_mpc/core/dial_core.py --example {viz_tag}")
 
 
 if __name__ == "__main__":
