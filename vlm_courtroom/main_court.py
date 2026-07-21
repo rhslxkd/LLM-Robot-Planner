@@ -28,7 +28,7 @@ def main():
         init_vertex_ai()
 
         # Initialize Court with Database Reset (clears previous tests)
-        court = VLMCourt(reset_db=True)
+        court = VLMCourt()
 
         # [Configuration]
         if args.scene:

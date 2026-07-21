@@ -1,12 +1,11 @@
 
 from vlm_courtroom.agents.specific_agents import CoordinateAgent, ProsecutorAgent, DefenseAttorneyAgent, JudgeAgent
-import chromadb
 import os
 
 class VLMCourt:
-    def __init__(self, reset_db: bool = False):
+    def __init__(self):
         print("initializing VLMCourt...")
-        self.coordinate_agent = CoordinateAgent(reset_db=reset_db)
+        self.coordinate_agent = CoordinateAgent()
         self.prosecutor_agent = ProsecutorAgent()
         self.defense_agent = DefenseAttorneyAgent()
         self.judge_agent = JudgeAgent()

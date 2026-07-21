@@ -15,7 +15,7 @@ import pandas as pd
 from load_rollout import load_latest_rollout, DATA_ROOT, REPO_ROOT
 from metrics import summarize
 
-DEFAULT_SCENES = ["oracle_scene_A", "oracle_scene_B", "oracle_scene_C"]
+DEFAULT_SCENES = ["oracle_scene_A", "oracle_scene_D", "oracle_scene_E"]
 
 
 def run(scenes: list) -> pd.DataFrame:
