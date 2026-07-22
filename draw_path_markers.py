@@ -65,6 +65,12 @@ def make_viz_yaml(scene, variant, viz_tag):
     # output_dir은 courtroom.py의 중첩 규칙(data/<scene>/<variant>/)을 그대로 따라가되,
     # 시각화 결과는 그 아래 viz/ 서브폴더에 따로 모아서 last_judged_path.json 등과 안 섞이게 한다.
     txt = txt.replace(f"output_dir: data/{scene}", f"output_dir: data/{scene}/{variant}/viz")
+    # vlm_path_json도 같은 variant 폴더를 가리키도록 맞춘다. 안 그러면 XML에 그려진 마커(variant 경로)와
+    # 실제 planner가 로드하는 경로(원본 scene 경로)가 서로 달라지는 불일치가 생긴다.
+    txt = txt.replace(
+        f"vlm_path_json: data/{scene}/last_judged_path.json",
+        f"vlm_path_json: data/{scene}/{variant}/last_judged_path.json",
+    )
     open(dst, "w").write(txt)
     return dst
 
