@@ -1,17 +1,34 @@
-
 from vlm_courtroom.agents.specific_agents import CoordinateAgent, ProsecutorAgent, DefenseAttorneyAgent, JudgeAgent
 import os
 
 class VLMCourt:
-    def __init__(self):
-        print("initializing VLMCourt...")
-        self.coordinate_agent = CoordinateAgent()
-        self.prosecutor_agent = ProsecutorAgent()
-        self.defense_agent = DefenseAttorneyAgent()
-        self.judge_agent = JudgeAgent()
+    def __init__(self, backend: str = "gemini", ollama_model: str = None):
+        """
+        backend: "gemini" (기본값, 기존 동작과 100% 동일) 또는 "ollama"
+        ollama_model: backend="ollama"일 때 4개 에이전트 전부에 적용할 모델 태그
+                      (예: "qwen2.5vl:7b", "llava:13b", "llama3.2-vision:11b")
+                      -- VLM 백본 비교 실험은 4개 에이전트 모두 동일 모델로 통일해서 돌린다.
+        """
+        print(f"initializing VLMCourt... (backend={backend}"
+              + (f", ollama_model={ollama_model}" if backend == "ollama" else "") + ")")
+        agent_kwargs = {"backend": backend}
+        if backend == "ollama":
+            agent_kwargs["ollama_model"] = ollama_model
+
+        self.coordinate_agent = CoordinateAgent(**agent_kwargs)
+        self.prosecutor_agent = ProsecutorAgent(**agent_kwargs)
+        self.defense_agent = DefenseAttorneyAgent(**agent_kwargs)
+        self.judge_agent = JudgeAgent(**agent_kwargs)
         print("Agents initialized.")
 
-    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None, scene_name: str = None, num_waypoints: int = 10):
+    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None, scene_name: str = None, num_waypoints: int = 10, variant: str = None):
+        """
+        scene_name: 씬 이름 (예: "oracle_scene_A") -- 입력 이미지가 있는 위치 (data/<scene_name>/oracle.png)
+        variant: 백엔드/모델 식별자 (예: "gemini", "ollama_qwen2_5vl_7b") -- 지정하면
+                 출력이 data/<scene_name>/<variant>/ 하위 폴더에 저장되어, 같은 씬을
+                 여러 백엔드/모델로 돌려도 서로 덮어쓰지 않는다. None이면 기존처럼
+                 data/<scene_name>/ 바로 아래에 저장 (하위 호환).
+        """
         print("\n=== 🏛️ VLM Courtroom Simulation Started 🏛️ ===\n")
         
         # 1. Coordinate Agent
@@ -49,23 +66,20 @@ class VLMCourt:
         # 5. Visualization (if image_path is provided)
         coordinates = []
         if image_path:
-            coordinates = self.visualize_path(image_path, judge_msg.content, robot_pos, scale, scene_name)
+            coordinates = self.visualize_path(image_path, judge_msg.content, robot_pos, scale, scene_name, variant)
 
         print("=== 🏛️ Case Closed 🏛️ ===")
         return judge_msg, coordinates
 
-    def visualize_path(self, image_path: str, verdict_text: str, robot_pos: tuple = None, scale: float = None, scene_name: str = None):
+    def visualize_path(self, image_path: str, verdict_text: str, robot_pos: tuple = None, scale: float = None, scene_name: str = None, variant: str = None):
         try:
             import matplotlib.pyplot as plt
             import matplotlib.image as mpimg
             import json
             import re
 
-            # Extract JSON coordinates from verdict
-            # Try to find JSON block first (```json ... ```)
             json_match = re.search(r'```json\s*(\[.*?\])\s*```', verdict_text, re.DOTALL)
             if not json_match:
-                # Fallback: Try to find any list-like structure
                 json_match = re.search(r'\[\s*{.*?}\s*(?:,\s*{.*?}\s*)*\]', verdict_text, re.DOTALL)
 
             if not json_match:
@@ -73,11 +87,8 @@ class VLMCourt:
                 return []
 
             json_str = json_match.group(1) if json_match.groups() else json_match.group(0)
-            
-            # Clean up common LLM JSON errors
-            # 1. Replace single quotes with double quotes (if they look like key/value quotes)
-            json_str = re.sub(r"'([a-zA-Z0-9_]+)'\s*:", r'"\1":', json_str) # keys
-            json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str) # string values
+            json_str = re.sub(r"'([a-zA-Z0-9_]+)'\s*:", r'"\1":', json_str)
+            json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str)
             
             try:
                 coordinates = json.loads(json_str)
@@ -86,66 +97,39 @@ class VLMCourt:
                 print(f"Raw extracted string: {json_str}")
                 return []
             
-            # Determine project root
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
             repo_root = os.path.dirname(project_root)
 
             if scene_name:
-                # Scene-scoped output: <repo_root>/data/<scene_name>/last_judged_path.json
-                project_output_dir = os.path.join(repo_root, "data", scene_name)
+                base_dir = os.path.join(repo_root, "data", scene_name)
+                project_output_dir = os.path.join(base_dir, variant) if variant else base_dir
             else:
-                # Backward-compatible default: vlm_courtroom/outputs/
                 project_output_dir = os.path.join(project_root, "outputs")
             os.makedirs(project_output_dir, exist_ok=True)
 
-            # Save coordinates to a JSON file for automation
             automation_json_path = os.path.join(project_output_dir, "last_judged_path.json")
             with open(automation_json_path, 'w') as f:
                 json.dump(coordinates, f, indent=2)
             print(f"📄 Saved coordinates for automation to: {automation_json_path}")
 
-            # Load image
             img = mpimg.imread(image_path)
             fig, ax = plt.subplots(figsize=(10, 10))
             ax.imshow(img)
             
-            # Default values if not provided (fallback to previous simple scaling)
             img_h, img_w = img.shape[:2]
             
             if robot_pos and scale:
-                # Robot-centric transformation
-                # Assumes:
-                # - Robot Pos (rx, ry) is the origin (0,0) in logical coords
-                # - Logical X is Forward (Right in image for this specific scenario?) 
-                #   WAIT. In the image (brax.png), the robot is facing RIGHT/FORWARD.
-                #   Let's assume X is forward (Right) and Y is Left (Up).
-                #   We need to verify the coordinate system convention. 
-                #   Usually X=Forward.
                 rx, ry = robot_pos
-                
                 plot_xs = []
                 plot_ys = []
                 for c in coordinates:
-                    # Transform logical (x, y) to image (px, py)
-                    # Image X = Robot X + Logical X * Scale (if X is right/forward)
-                    # Image Y = Robot Y - Logical Y * Scale (if Y is left/up)
-                    # Note: We need to see if LLM generates x,y in a specific frame. 
-                    # Usually: x=forward, y=lateral.
-                    
-                    # For brax.png, robot faces RIGHT. 
-                    # So x+ is Image Right. y+ is Image Up (Left of robot).
-                    
                     px = rx + (c['x'] * scale)
                     py = ry - (c['y'] * scale) 
                     plot_xs.append(px)
                     plot_ys.append(py)
-                
-                # Plot robot position
                 ax.plot(rx, ry, 'bo', markersize=10, label='Go2 Robot (Origin)')
-                
             else:
-                # Previous Scale-to-Fit mode
                 scale_x = img_w / 5.0 
                 scale_y = img_h / 5.0 
                 plot_xs = [c['x'] * scale_x for c in coordinates]
@@ -154,14 +138,12 @@ class VLMCourt:
             ax.plot(plot_xs, plot_ys, 'r-', linewidth=2, label='Judge Path')
             ax.scatter(plot_xs, plot_ys, c='yellow', s=50, zorder=5)
             
-            # Add labels
             for i, (x, y) in enumerate(zip(plot_xs, plot_ys)):
                 ax.annotate(f"{i}", (x, y), color='white', fontsize=12, fontweight='bold')
 
             plt.title("Judge's Final Verdict Path")
             plt.legend()
             
-            # Imports for saving
             from datetime import datetime
             import shutil
 
@@ -169,34 +151,28 @@ class VLMCourt:
             filename_no_ext, ext = os.path.splitext(input_filename)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            # 1. Manage Input File (Copy to project inputs directory)
-            # Determine project root based on this file's location
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
             repo_root = os.path.dirname(project_root)
 
             if scene_name:
-                # Scene-scoped: <repo_root>/data/<scene_name>/ (shared with the JSON output above)
                 project_input_dir = os.path.join(repo_root, "data", scene_name)
             else:
-                # Backward-compatible default: vlm_courtroom/inputs/
                 project_input_dir = os.path.join(project_root, "inputs")
             os.makedirs(project_input_dir, exist_ok=True)
 
             target_input_path = os.path.join(project_input_dir, input_filename)
 
-            # Only copy if source and destination are different
             if os.path.abspath(image_path) != os.path.abspath(target_input_path):
                 shutil.copy2(image_path, target_input_path)
                 print(f"📂 Copied input image to: {target_input_path}")
             else:
                 print(f"📂 Input image is already in project inputs: {target_input_path}")
 
-            # 2. Save Result to Project Outputs Directory (ONLY)
             if scene_name:
-                project_output_dir = os.path.join(repo_root, "data", scene_name)
+                base_dir = os.path.join(repo_root, "data", scene_name)
+                project_output_dir = os.path.join(base_dir, variant) if variant else base_dir
             else:
-                # Backward-compatible default: vlm_courtroom/outputs/
                 project_output_dir = os.path.join(project_root, "outputs")
             os.makedirs(project_output_dir, exist_ok=True)
             

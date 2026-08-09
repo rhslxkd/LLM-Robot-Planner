@@ -207,6 +207,21 @@ def main():
     #     default=None,
     #     help="Custom environment to import dynamically",
     # )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="YAML의 output_dir을 덮어쓴다. courtroom.py의 중첩 구조(data/<scene>/<variant>/)에 "
+             "맞춰 씬/백엔드 조합별로 실행할 때 사용 (예: data/oracle_scene_A/gemini).",
+    )
+    parser.add_argument(
+        "--vlm-path-json",
+        type=str,
+        default=None,
+        help="YAML(env config)의 vlm_path_json을 덮어쓴다. courtroom.py가 생성한 "
+             "last_judged_path.json 경로를 씬/백엔드 조합별로 지정할 때 사용 "
+             "(예: data/oracle_scene_A/gemini/last_judged_path.json).",
+    )
     args = parser.parse_args()
     
     if args.example is None and args.config is None:
@@ -231,6 +246,10 @@ def main():
 
     # 얘가 YAML의 텍스트를 파이썬의 DialCOnfig와 env_config라는 객체로 변환
     dial_config = load_dataclass_from_dict(DialConfig, config_dict)
+    # CLI로 output_dir을 넘겼으면 YAML 값보다 우선한다 (courtroom.py의 씬/백엔드별
+    # 중첩 폴더에 맞춰 실행할 때, YAML 파일을 매번 새로 만들 필요 없이 여기서 지정).
+    if args.output_dir is not None:
+        dial_config.output_dir = args.output_dir
     dial_config.output_dir = resolve_output_dir(dial_config.output_dir)
     rng = jax.random.PRNGKey(seed=dial_config.seed)
 
@@ -239,6 +258,9 @@ def main():
     env_config = load_dataclass_from_dict(
         env_config_type, config_dict, convert_list_to_array=True
     )
+    # CLI로 vlm_path_json을 넘겼으면 YAML 값보다 우선한다 (같은 이유).
+    if args.vlm_path_json is not None:
+        env_config.vlm_path_json = args.vlm_path_json
 
     print(emoji.emojize(":rocket:") + "Creating environment")
     env = brax_envs.get_environment(dial_config.env_name, config=env_config)

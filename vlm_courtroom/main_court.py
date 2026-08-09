@@ -1,4 +1,3 @@
-
 import sys
 import os
 import argparse
@@ -21,14 +20,33 @@ def main():
         default=None,
         help="Scene name; writes outputs to <repo_root>/data/<scene>/ instead of the default vlm_courtroom/inputs|outputs/",
     )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        default="gemini",
+        choices=["gemini", "ollama"],
+        help="VLM backend to use for all four courtroom agents (default: gemini).",
+    )
+    parser.add_argument(
+        "--ollama-model",
+        type=str,
+        default=None,
+        help="Ollama model tag to use when --backend=ollama "
+             "(e.g., qwen2.5vl:7b, llava:13b, llama3.2-vision:11b). Required if --backend=ollama.",
+    )
     args = parser.parse_args()
 
-    try:
-        # Initialize Vertex AI connection
-        init_vertex_ai()
+    if args.backend == "ollama" and not args.ollama_model:
+        parser.error("--ollama-model is required when --backend=ollama")
 
-        # Initialize Court with Database Reset (clears previous tests)
-        court = VLMCourt()
+    try:
+        # Vertex AI 초기화는 gemini 백엔드를 쓸 때만 필요함
+        # (ollama 로컬 실험은 서비스 계정 키가 없는 환경에서도 돌아갈 수 있어야 함)
+        if args.backend == "gemini":
+            init_vertex_ai()
+
+        # Initialize Court with the selected backend
+        court = VLMCourt(backend=args.backend, ollama_model=args.ollama_model)
 
         # [Configuration]
         if args.scene:
@@ -131,7 +149,21 @@ def main():
         
         NUM_WAYPOINTS = {"oracle_scene_C": 14, "oracle_scene_E": 15}
         num_waypoints = NUM_WAYPOINTS.get(args.scene, 10)
-        court.run_case(scenario, image_path=image_path, robot_pos=robot_pos, scale=scale, scene_name=args.scene, num_waypoints=num_waypoints)
+
+        # variant: 백엔드/모델 식별자. scene_name(원래 씬 이름, 입력 이미지 위치)은 그대로 두고,
+        # 출력만 data/<scene>/<variant>/ 하위 폴더로 분리한다.
+        #   Gemini는 역할별로 다른 모델(judge=2.5-pro, 나머지=2.5-flash)을 쓰므로
+        #   variant에는 개별 모델명 대신 "gemini"로만 표시한다.
+        if args.backend == "gemini":
+            variant = "gemini"
+        else:
+            safe_model_tag = args.ollama_model.replace(":", "_").replace(".", "_")
+            variant = f"ollama_{safe_model_tag}"
+        if args.scene:
+            print(f"🗂️  Output directory: data/{args.scene}/{variant}/")
+
+        court.run_case(scenario, image_path=image_path, robot_pos=robot_pos, scale=scale,
+                       scene_name=args.scene, num_waypoints=num_waypoints, variant=variant)
         
     except Exception as e:
         print(f"❌ An error occurred: {e}")

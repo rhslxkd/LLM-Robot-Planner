@@ -36,8 +36,10 @@ ROBOT_PHYSICAL_CONSTRAINTS = """
 
 
 class CoordinateAgent(VLMAgent):
-    def __init__(self, name="CoordinateAgent"):
-        super().__init__(name, "Coordinate Generator", model_role="COORDINATE")
+    def __init__(self, name="CoordinateAgent", **kwargs):
+        # **kwargs: backend="gemini"/"ollama", ollama_model="..." 등이
+        # VLMCourt로부터 그대로 흘러들어와 VLMAgent.__init__까지 전달된다.
+        super().__init__(name, "Coordinate Generator", model_role="COORDINATE", **kwargs)
         # NOTE: ChromaDB(VectorDB) 저장 로직 제거됨.
         # 과거엔 self.collection.add()로 제안 좌표를 저장했으나, 어디서도 query()로
         # 조회하지 않아 실질적으로 아무 기능이 없는 오버헤드였음(임베딩 계산 + 디스크 I/O
@@ -97,8 +99,8 @@ class CoordinateAgent(VLMAgent):
 
 
 class ProsecutorAgent(VLMAgent):
-    def __init__(self, name="ProsecutorAgent"):
-        super().__init__(name, "Prosecutor", model_role="PROSECUTOR")
+    def __init__(self, name="ProsecutorAgent", **kwargs):
+        super().__init__(name, "Prosecutor", model_role="PROSECUTOR", **kwargs)
 
     def process(self, context: Dict[str, Any]) -> Message:
         print(f"[{self.name}] Reviewing proposal...")
@@ -126,8 +128,8 @@ class ProsecutorAgent(VLMAgent):
 
 
 class DefenseAttorneyAgent(VLMAgent):
-    def __init__(self, name="DefenseAttorneyAgent"):
-        super().__init__(name, "Defense Attorney", model_role="DEFENSE")
+    def __init__(self, name="DefenseAttorneyAgent", **kwargs):
+        super().__init__(name, "Defense Attorney", model_role="DEFENSE", **kwargs)
 
     def process(self, context: Dict[str, Any]) -> Message:
         print(f"[{self.name}] Defending proposal...")
@@ -157,8 +159,8 @@ class DefenseAttorneyAgent(VLMAgent):
 
 
 class JudgeAgent(VLMAgent):
-    def __init__(self, name="JudgeAgent"):
-        super().__init__(name, "Judge", model_role="JUDGE")
+    def __init__(self, name="JudgeAgent", **kwargs):
+        super().__init__(name, "Judge", model_role="JUDGE", **kwargs)
 
     def process(self, context: Dict[str, Any]) -> Message:
         print(f"[{self.name}] Deliberating...")
