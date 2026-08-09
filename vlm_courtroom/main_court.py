@@ -24,7 +24,7 @@ def main():
         "--backend",
         type=str,
         default="gemini",
-        choices=["gemini", "ollama"],
+        choices=["gemini", "ollama", "openai"],
         help="VLM backend to use for all four courtroom agents (default: gemini).",
     )
     parser.add_argument(
@@ -32,21 +32,43 @@ def main():
         type=str,
         default=None,
         help="Ollama model tag to use when --backend=ollama "
-             "(e.g., qwen2.5vl:7b, llava:13b, llama3.2-vision:11b). Required if --backend=ollama.",
+             "(e.g., qwen2.5vl:7b, llava-llama3, qwen3-vl, minicpm-v). Required if --backend=ollama.",
+    )
+    parser.add_argument(
+        "--gemini-model",
+        type=str,
+        default=None,
+        help="Gemini model to use uniformly for all four agents when --backend=gemini "
+             "(e.g., gemini-2.5-flash, gemini-2.5-pro). If omitted, falls back to the "
+             "role-based mix (Judge=pro, others=flash) -- NOT a fair single-model comparison.",
+    )
+    parser.add_argument(
+        "--openai-model",
+        type=str,
+        default=None,
+        help="OpenAI model tag to use when --backend=openai (e.g., gpt-4o, gpt-4o-mini). "
+             "Required if --backend=openai.",
     )
     args = parser.parse_args()
 
     if args.backend == "ollama" and not args.ollama_model:
         parser.error("--ollama-model is required when --backend=ollama")
+    if args.backend == "openai" and not args.openai_model:
+        parser.error("--openai-model is required when --backend=openai")
 
     try:
         # Vertex AI 초기화는 gemini 백엔드를 쓸 때만 필요함
-        # (ollama 로컬 실험은 서비스 계정 키가 없는 환경에서도 돌아갈 수 있어야 함)
+        # (ollama/openai 실험은 서비스 계정 키가 없는 환경에서도 돌아갈 수 있어야 함)
         if args.backend == "gemini":
             init_vertex_ai()
 
         # Initialize Court with the selected backend
-        court = VLMCourt(backend=args.backend, ollama_model=args.ollama_model)
+        court = VLMCourt(
+            backend=args.backend,
+            ollama_model=args.ollama_model,
+            gemini_model=args.gemini_model,
+            openai_model=args.openai_model,
+        )
 
         # [Configuration]
         if args.scene:
@@ -97,12 +119,13 @@ def main():
                 """,
             "oracle_scene_D": """
                 중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
-                그 상황속 사진에 보이듯이, 로봇의 양옆으로 붉은 벽이 길고 좁은 통로를 이루고 있어.
-                통로 안쪽 폭은 로봇 중심선 기준 좌우 약 0.85m로 상당히 빠듯하지만,
-                로봇의 동적 클리어런스(0.5m)와 안전마진(0.3m)을 합한 필요 폭(0.8m)은 만족해.
-                좌우로 크게 틀 필요는 없으니, 통로 중앙선(y=0)을 유지하며 곧게 직진해서
-                앞으로 7m 이동할 수 있도록 12개의 좌표를 제시해줘.
-                모든 좌표의 y값은 0에 최대한 가깝게(±0.1m 이내) 유지해야 해.
+                그 상황속 사진에 보이듯이, 로봇의 양옆으로 붉은 벽이 길게 이어져
+                좁은 통로를 이루고 있어.
+                이 통로를 따라 앞으로 7m 이동할 수 있는 12개의 좌표를 제시해줘.
+                통로의 폭이 로봇이 안전하게 통과하기에 충분한지는 스스로
+                물리적 제약 조건(유효 클리어런스, 최소 통과 폭)을 근거로 판단해서 결정해.
+                충분하다고 판단되면 중앙선을 유지하며 직진하는 경로를,
+                불충분하다고 판단되면 그 판단과 근거를 명확히 설명해.
                 """,
             "oracle_scene_E": """
                 중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
@@ -154,11 +177,20 @@ def main():
         # 출력만 data/<scene>/<variant>/ 하위 폴더로 분리한다.
         #   Gemini는 역할별로 다른 모델(judge=2.5-pro, 나머지=2.5-flash)을 쓰므로
         #   variant에는 개별 모델명 대신 "gemini"로만 표시한다.
+        #   --gemini-model로 단일 모델을 지정한 경우(공정 비교용)엔 그 모델명을 그대로 반영해서
+        #   기존 "gemini"(혼합) variant랑 겹치지 않게 한다.
         if args.backend == "gemini":
-            variant = "gemini"
-        else:
+            if args.gemini_model:
+                safe_gemini_tag = args.gemini_model.replace(":", "_").replace(".", "_").replace("-", "_")
+                variant = f"gemini_{safe_gemini_tag}"
+            else:
+                variant = "gemini"
+        elif args.backend == "ollama":
             safe_model_tag = args.ollama_model.replace(":", "_").replace(".", "_")
             variant = f"ollama_{safe_model_tag}"
+        elif args.backend == "openai":
+            safe_openai_tag = args.openai_model.replace(":", "_").replace(".", "_").replace("-", "_")
+            variant = f"openai_{safe_openai_tag}"
         if args.scene:
             print(f"🗂️  Output directory: data/{args.scene}/{variant}/")
 

@@ -13,6 +13,10 @@ LOCATION = "us-central1"
 # --- Ollama (로컬 VLM 백엔드 비교 실험용) ---
 OLLAMA_BASE_URL = "http://localhost:11434"
 
+# --- OpenAI (GPT 백엔드 비교 실험용) ---
+# TODO: 실제 키 경로/환경변수명 확인 후 맞출 것. 우선 환경변수 OPENAI_API_KEY 사용을 기본으로 함.
+OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
+
 # Map roles to specific models
 AGENT_MODEL_MAP = {
     "JUDGE": "gemini-2.5-pro",
@@ -41,12 +45,15 @@ def init_vertex_ai():
         raise e
 
 
-def get_model(role: str = "DEFAULT"):
+def get_model(role: str = "DEFAULT", model_name: str = None):
     """
     Returns a configured GenerativeModel instance based on the agent's role.
-    Defaults to gemini-1.5-flash if role is not found.
-    (Ollama 백엔드에서는 이 함수를 호출하지 않음 — VLMAgent가 backend="ollama"일 때
-    Vertex AI 모델 생성을 건너뛰도록 되어 있음.)
+
+    model_name이 명시되면 AGENT_MODEL_MAP을 무시하고 그 모델을 그대로 쓴다 --
+    이게 있어야 "Gemini 백본"을 Pro/Flash 혼합이 아니라 4개 에이전트 전부 동일 모델로
+    통일해서 공정하게 비교할 수 있다 (Ollama 백본이 이미 그렇게 동작하는 것과 동일하게).
+    model_name이 없으면 기존처럼 역할별 매핑(AGENT_MODEL_MAP)을 사용한다.
     """
-    model_name = AGENT_MODEL_MAP.get(role.upper(), "gemini-1.5-flash")
+    if model_name is None:
+        model_name = AGENT_MODEL_MAP.get(role.upper(), "gemini-1.5-flash")
     return GenerativeModel(model_name)

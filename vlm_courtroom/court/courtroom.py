@@ -2,18 +2,36 @@ from vlm_courtroom.agents.specific_agents import CoordinateAgent, ProsecutorAgen
 import os
 
 class VLMCourt:
-    def __init__(self, backend: str = "gemini", ollama_model: str = None):
+    def __init__(self, backend: str = "gemini", ollama_model: str = None,
+                 gemini_model: str = None, openai_model: str = None):
         """
-        backend: "gemini" (기본값, 기존 동작과 100% 동일) 또는 "ollama"
+        backend: "gemini"(기본값) / "ollama" / "openai"
         ollama_model: backend="ollama"일 때 4개 에이전트 전부에 적용할 모델 태그
-                      (예: "qwen2.5vl:7b", "llava:13b", "llama3.2-vision:11b")
-                      -- VLM 백본 비교 실험은 4개 에이전트 모두 동일 모델로 통일해서 돌린다.
+                      (예: "qwen2.5vl:7b", "llava-llama3", "qwen3-vl", "minicpm-v")
+        gemini_model: backend="gemini"일 때 지정하면 4개 에이전트 전부 이 모델 하나로
+                      통일(예: "gemini-2.5-flash", "gemini-2.5-pro"). 지정 안 하면
+                      기존처럼 역할별 혼합 매핑(Judge=pro, 나머지=flash)을 씀 --
+                      이건 공정한 백본 비교용이 아니라는 점 주의.
+        openai_model: backend="openai"일 때 4개 에이전트 전부에 적용할 모델명
+                      (예: "gpt-4o", "gpt-4o-mini").
+        -- VLM 백본 비교 실험은 4개 에이전트 모두 동일 모델로 통일해서 돌리는 게 원칙.
         """
-        print(f"initializing VLMCourt... (backend={backend}"
-              + (f", ollama_model={ollama_model}" if backend == "ollama" else "") + ")")
+        label = f"backend={backend}"
+        if backend == "ollama":
+            label += f", ollama_model={ollama_model}"
+        elif backend == "gemini":
+            label += f", gemini_model={gemini_model or '(역할별 혼합: pro/flash)'}"
+        elif backend == "openai":
+            label += f", openai_model={openai_model}"
+        print(f"initializing VLMCourt... ({label})")
+
         agent_kwargs = {"backend": backend}
         if backend == "ollama":
             agent_kwargs["ollama_model"] = ollama_model
+        elif backend == "gemini":
+            agent_kwargs["gemini_model"] = gemini_model
+        elif backend == "openai":
+            agent_kwargs["openai_model"] = openai_model
 
         self.coordinate_agent = CoordinateAgent(**agent_kwargs)
         self.prosecutor_agent = ProsecutorAgent(**agent_kwargs)
