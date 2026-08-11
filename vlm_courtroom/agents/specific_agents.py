@@ -9,24 +9,36 @@ ROBOT_PHYSICAL_CONSTRAINTS = """
         ### [CRITICAL: Robot Physical Constraints - Unitree Go2]
         You MUST adhere to the following physical constraints for path planning:
 
-        1. **Physical Footprint**: 
-           - Body Dimensions: 0.7m (Length) x 0.31m (Width).
+        1. **Physical Footprint** (measured from the simulated collision geometry,
+           dial_mpc/dial_mpc/models/unitree_go2/go2.xml):
+           - Trunk + hip-joint envelope: 0.39m (Length, hip-to-hip) x 0.35m (Width,
+             including hip joint housings). Note: this is narrower than the
+             commonly-cited Unitree marketing spec (0.7m x 0.31m), which includes
+             fully outstretched legs; the values above reflect the actual simulated
+             collision shapes.
            - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
-   
+             This fully circumscribes the measured footprint even at 45-degree yaw
+             (worst-case half-diagonal is 0.26m) and adds margin for gait sway during
+             trotting, which is not captured by the static collision geometry above.
+
         2. **Safety Protocol**:
-           - Maintain a minimum **Safety Margin of 0.3m** from any detected obstacle (puddles, objects, curbs).
-             (Note: this margin is ON TOP OF the 0.5m dynamic clearance radius above, which already
-             accounts for the robot's physical footprint and gait sway. The margin itself only needs
-             to cover residual uncertainty, so do not treat it as an additional large buffer.)
-           - If a gap between obstacles is narrower than **1.6m** (2 x effective clearance radius of 0.8m),
-             it is considered UNPASSABLE. Do not attempt to go through.
+           - Maintain a minimum **Safety Margin of 0.3m** from any detected obstacle
+             (puddles, objects, curbs).
+             (Note: this margin is ON TOP OF the 0.5m dynamic clearance radius above,
+             which already accounts for the robot's physical footprint and gait sway.
+             The margin itself only needs to cover residual uncertainty, so do not
+             treat it as an additional large buffer.)
+           - If a gap between obstacles is narrower than **1.6m** (2 x effective
+             clearance radius of 0.8m), it is considered UNPASSABLE. Do not attempt
+             to go through.
 
         3. **Locomotion Constraints**:
-           - Sequential Waypoint Distance (Step Length): 
+           - Sequential Waypoint Distance (Step Length):
              - MIN: 0.4m (to prevent gait instability)
              - MAX: 1.0m (to prevent excessive acceleration)
              - RECOMMENDED: 0.6m - 0.7m
-           - Turning Radius: Avoid sharp 90-degree turns. Use smooth arcs with a radius of at least **0.5m**.
+           - Turning Radius: Avoid sharp 90-degree turns. Use smooth arcs with a
+             radius of at least **0.5m**.
 
         4. **Coordinate Mapping Strategy**:
            - Use the robot's current position as (0, 0).
