@@ -49,12 +49,24 @@ def main():
         help="OpenAI model tag to use when --backend=openai (e.g., gpt-4o, gpt-4o-mini). "
              "Required if --backend=openai.",
     )
+    parser.add_argument(
+        "--num-waypoints",
+        type=int,
+        default=None,
+        help="Override the number of waypoints requested from the courtroom "
+             "(default: per-scene hardcoded value, e.g., 10 for most scenes, 15 for E). "
+             "No upper bound enforced -- e.g. --num-waypoints 100 or 200 is allowed for "
+             "the waypoint-count experiment, though very large values may reduce JSON "
+             "parse success rate for weaker/local models (this is itself a metric of interest).",
+    )
     args = parser.parse_args()
 
     if args.backend == "ollama" and not args.ollama_model:
         parser.error("--ollama-model is required when --backend=ollama")
     if args.backend == "openai" and not args.openai_model:
         parser.error("--openai-model is required when --backend=openai")
+    if args.num_waypoints is not None and args.num_waypoints < 2:
+        parser.error("--num-waypoints must be at least 2 (need a start and an end point)")
 
     try:
         # Vertex AI 초기화는 gemini 백엔드를 쓸 때만 필요함
@@ -83,12 +95,25 @@ def main():
             else:
                 image_path = None
         
+        # 웨이포인트 개수 계산을 시나리오 텍스트 선택보다 먼저 한다 --
+        # 시나리오 텍스트 안의 "N개의 좌표" 문구도 이 값으로 채워야
+        # Coordinate 프롬프트의 "EXACTLY {num_waypoints}" 지시와 모순이 안 생긴다.
+        NUM_WAYPOINTS = {"oracle_scene_C": 14, "oracle_scene_E": 15}
+        if args.num_waypoints is not None:
+            num_waypoints = args.num_waypoints
+            print(f"⚙️  num_waypoints overridden via CLI: {num_waypoints}")
+        else:
+            num_waypoints = NUM_WAYPOINTS.get(args.scene, 10)
+
         # Example Scenario Description (Used if image_path is None or as context)
+        # {num_waypoints} 자리는 아래에서 실제 num_waypoints 값으로 .format() 처리된다 --
+        # 숫자를 하드코딩해두면 "N개 내놔"(시나리오 텍스트)와 "EXACTLY M개"(Coordinate
+        # 프롬프트 자체 지시)가 --num-waypoints 오버라이드 시 서로 모순되는 지시가 된다.
         SCENARIO_TEMPLATES = {
             "oracle_scene_A": """
                 중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
                 그 상황속 사진에 보이듯이, 앞에 빨간 상자 장애물이 하나 있어(크기는 작은 편).
-                이 장애물을 피해서 앞으로 5m 이동할 수 있도록 10개의 좌표를 제시해줘.
+                이 장애물을 피해서 앞으로 5m 이동할 수 있도록 {num_waypoints}개의 좌표를 제시해줘.
                 장애물로부터 최소 안전마진 0.5m만 확보하면 충분해 - 상자 자체가 작으니
                 필요 이상으로 크게 돌아갈 필요가 전혀 없어. 최단 경로에 가깝게, 살짝만 옆으로 틀어서
                 효율적으로 피해가.
@@ -99,7 +124,7 @@ def main():
                 그 상황속 사진에 보이듯이, 앞에 빨간 상자 장애물이 두 개 있어.
                 첫 번째 상자(가까운 것, 로봇 기준 위쪽에 위치)는 아래쪽으로 살짝만 틀어서 피하고,
                 두 번째 상자(먼 것, 로봇 기준 아래쪽에 위치)는 위쪽으로 살짝만 틀어서 피해서,
-                지그재그(S자)로 최단 경로에 가깝게 앞으로 6.5m 이동할 수 있도록 10개의 좌표를 제시해줘.
+                지그재그(S자)로 최단 경로에 가깝게 앞으로 6.5m 이동할 수 있도록 {num_waypoints}개의 좌표를 제시해줘.
                 각 상자로부터 최소 안전마진 0.5m는 반드시 확보하되, 불필요하게 크게 우회하지 말고
                 최대한 직선에 가까운 효율적인 경로로 움직여.
                 반드시 두 상자를 모두 피해가야해.
@@ -108,7 +133,7 @@ def main():
                 중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
                 그 상황속 사진에 보이듯이, 앞에 상자 형태의 장애물이 세 개 있어(위-아래-위 순서로 지그재그 배치, 크기도 서로 다름).
                 세 장애물을 순서대로 피하면서 지그재그(슬랄롬) 형태로 앞으로 7m 이동할 수 있도록
-                14개의 좌표를 제시해줘.
+                {num_waypoints}개의 좌표를 제시해줘.
 
                 가장 중요한 것은 각 장애물을 정확한 위치에서 안전마진만큼 피해가는 것이야 - 이걸 절대 희생하지 마.
                 그 다음으로, waypoint 사이의 급격한 방향전환(90도에 가까운 꺾임)만 피해서
@@ -121,7 +146,7 @@ def main():
                 중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
                 그 상황속 사진에 보이듯이, 로봇의 양옆으로 붉은 벽이 길게 이어져
                 좁은 통로를 이루고 있어.
-                이 통로를 따라 앞으로 7m 이동할 수 있는 12개의 좌표를 제시해줘.
+                이 통로를 따라 앞으로 7m 이동할 수 있는 {num_waypoints}개의 좌표를 제시해줘.
                 통로의 폭이 로봇이 안전하게 통과하기에 충분한지는 스스로
                 물리적 제약 조건(유효 클리어런스, 최소 통과 폭)을 근거로 판단해서 결정해.
                 충분하다고 판단되면 중앙선을 유지하며 직진하는 경로를,
@@ -144,7 +169,7 @@ def main():
                    반드시 y가 -1.2 이하가 되어야 해.
 
                 이 세 지점(x≈1.5일 때 y≤-1.2, x≈3.5일 때 y≥1.2, x≈5.5일 때 y≤-1.2)을
-                반드시 통과하도록 15개의 좌표를 만들어줘. 시작점(0,0)에서 목표지점(6.5, 0)까지
+                반드시 통과하도록 {num_waypoints}개의 좌표를 만들어줘. 시작점(0,0)에서 목표지점(6.5, 0)까지
                 이동하되, 위 세 지점을 절대 놓치지 말고 정확한 y값(또는 그보다 더 안전한 값)으로
                 통과해야 해. 애매하게 y=±0.5 정도로만 살짝 틀면 절대 안전하지 않아 - 반드시
                 위에서 요구한 y값(±1.2 이상)을 달성해야 해.
@@ -154,7 +179,8 @@ def main():
         }
 
         DEFAULT_SCENARIO = SCENARIO_TEMPLATES["oracle_scene_A"]
-        scenario = SCENARIO_TEMPLATES.get(args.scene, DEFAULT_SCENARIO)
+        scenario_template = SCENARIO_TEMPLATES.get(args.scene, DEFAULT_SCENARIO)
+        scenario = scenario_template.format(num_waypoints=num_waypoints)
         
         if image_path:
             print(f"📸 Analying Image: {image_path}")
@@ -170,9 +196,6 @@ def main():
             robot_pos = None
             scale = None
         
-        NUM_WAYPOINTS = {"oracle_scene_C": 14, "oracle_scene_E": 15}
-        num_waypoints = NUM_WAYPOINTS.get(args.scene, 10)
-
         # variant: 백엔드/모델 식별자. scene_name(원래 씬 이름, 입력 이미지 위치)은 그대로 두고,
         # 출력만 data/<scene>/<variant>/ 하위 폴더로 분리한다.
         #   Gemini는 역할별로 다른 모델(judge=2.5-pro, 나머지=2.5-flash)을 쓰므로
@@ -191,6 +214,13 @@ def main():
         elif args.backend == "openai":
             safe_openai_tag = args.openai_model.replace(":", "_").replace(".", "_").replace("-", "_")
             variant = f"openai_{safe_openai_tag}"
+
+        # 웨이포인트 개수를 CLI로 오버라이드한 경우, variant에 접미사를 붙여서
+        # 같은 씬/백엔드로 개수만 다르게 돌린 실험 결과들이 서로 안 덮어쓰게 한다
+        # (기본값 그대로 쓴 경우엔 접미사 없음 -> 기존 결과 위치와 호환 유지).
+        if args.num_waypoints is not None:
+            variant = f"{variant}_wp{num_waypoints}"
+
         if args.scene:
             print(f"🗂️  Output directory: data/{args.scene}/{variant}/")
 
