@@ -213,9 +213,112 @@ def main():
             },
         }
 
-        DEFAULT_SCENARIO = SCENARIO_TEMPLATES["oracle_scene_A"]["medium"]
-        scenario_template = SCENARIO_TEMPLATES.get(args.scene, {}).get(args.prompt_level, DEFAULT_SCENARIO)
+        # ollama 백엔드(Qwen2.5-VL, LLaVA 등)는 영어 중심으로 학습된 모델이 대부분이라,
+        # 한글 시나리오를 그대로 주면 지시 이해도가 떨어지는 문제가 실제로 관찰됨(Task #7).
+        # 그래서 ollama 백엔드에는 동일한 내용의 영어 템플릿을 대신 사용한다.
+        # 좌표/수치/물리제약 문구는 한글판과 1:1로 정확히 대응시켰음 (특히 Scene E의
+        # y=±1.2, ±0.4 임계값은 숫자 하나도 다르지 않게 유지).
+        SCENARIO_TEMPLATES_EN = {
+            "oracle_scene_A": {
+                "rich": """
+                    The robot (go2) must move to (5,0), avoiding the small red obstacle ahead.
+                    Move forward about 1.5m, then shift right (-y direction) by about 0.5m to pass the obstacle,
+                    then shift back left (+y direction) to return to the centerline (y=0) and continue forward
+                    for the remaining distance.
+                    Following this procedure, provide {num_waypoints} coordinates.
+                    """,
+                "medium": """
+                    The robot (go2), centered in the frame, needs to move forward.
+                    As shown in the image, there is one red box obstacle ahead (relatively small in size).
+                    Provide {num_waypoints} coordinates that let the robot move forward 5m while avoiding this obstacle.
+                    A minimum safety margin of 0.5m from the obstacle is enough - since the box itself is small,
+                    there is no need to detour more than necessary. Stay close to the shortest path, veering only
+                    slightly to the side to avoid it efficiently.
+                    Be sure to avoid the box, but do not make an unnecessarily large detour.
+                    """,
+                "minimal": """
+                    The robot (go2) starts at (0,0) and must move to (5,0).
+                    Looking at the image, provide {num_waypoints} coordinates that safely reach the goal.
+                    """,
+            },
+            "oracle_scene_D": {
+                "rich": """
+                    The robot (go2) must move to (7,0) along the narrow corridor ahead.
+                    Simply go straight forward while keeping to the corridor centerline (y=0) - with no direction
+                    changes needed, evenly place {num_waypoints} coordinates along the straight line y=0 from the
+                    0m point to the 7m point.
+                    """,
+                "medium": """
+                    The robot (go2), centered in the frame, needs to move forward.
+                    As shown in the image, long red walls run along both sides of the robot,
+                    forming a narrow corridor.
+                    Provide {num_waypoints} coordinates that let the robot move forward 7m along this corridor.
+                    Decide for yourself, based on the physical constraints (effective clearance, minimum passable
+                    width), whether the corridor is wide enough for the robot to pass through safely.
+                    If you judge it to be wide enough, provide a straight path along the centerline;
+                    if you judge it to be insufficient, clearly explain that judgment and your reasoning.
+                    """,
+                "minimal": """
+                    The robot (go2) starts at (0,0) and must move to (7,0).
+                    Looking at the image, provide {num_waypoints} coordinates that safely reach the goal.
+                    """,
+            },
+            "oracle_scene_E": {
+                "rich": """
+                    The robot (go2), centered in the frame, needs to move forward.
+                    The robot is in a room enclosed by walls on all sides, containing three pillar-shaped obstacles.
+
+                    ⚠️ Very important: these pillars are not small point obstacles - they are long walls that
+                    block most of the room's height.
+                    It is not enough to deviate slightly from the center point; the robot must completely clear
+                    the edge (end) of each wall.
+                    Exactly where each pillar blocks, and the y-value the robot must reach, are as follows
+                    (these numbers are precisely calculated, so follow them exactly):
+
+                    1. First pillar (around x=1.5): blocks everything from y=-0.4 upward. When passing this pillar,
+                       the robot must have y at or below -1.2 (i.e., further below -1.2, e.g. -1.3, -1.5, etc.).
+                    2. Second pillar (around x=3.5): blocks everything from y=0.4 downward. When passing this
+                       pillar, the robot must have y at or above +1.2 (i.e., further above 1.2, e.g. 1.3, 1.5, etc.).
+                    3. Third pillar (around x=5.5): blocks everything from y=-0.4 upward. When passing this pillar,
+                       the robot must have y at or below -1.2.
+
+                    Create {num_waypoints} coordinates that are guaranteed to pass through these three points
+                    (y<=-1.2 at x=1.5, y>=1.2 at x=3.5, y<=-1.2 at x=5.5). Move from the start point (0,0) to the
+                    goal point (6.5, 0), never missing these three points, and passing them with exactly the
+                    required y-value (or an even safer value).
+                    Vaguely shifting by only about y=+-0.5 is not safe at all - the robot must
+                    achieve the y-values required above (+-1.2 or beyond).
+                    Connect each point with a smooth curve, and keep the distance between waypoints between
+                    0.4m and 1.0m.
+                    """,
+                "medium": """
+                    The robot (go2), centered in the frame, needs to move forward.
+                    The robot is in a room enclosed by walls on all sides, containing three pillar-shaped obstacles.
+                    These pillars are not small point obstacles - they are long walls that block most of the
+                    room's height, so deviating only slightly from the center point is not enough; the robot must
+                    completely clear the end of each wall.
+                    Look at the image and judge for yourself the position and blocked range of each pillar, then
+                    provide {num_waypoints} coordinates that safely avoid all three pillars while moving
+                    from the start point (0,0) to the goal point (6.5,0). Connect each point with a smooth curve
+                    and keep the distance between waypoints between 0.4m and 1.0m.
+                    """,
+                "minimal": """
+                    The robot (go2) starts at (0,0) and must move to (6.5,0).
+                    Looking at the image, provide {num_waypoints} coordinates that safely reach the goal.
+                    """,
+            },
+        }
+
+        # ollama 백엔드는 영어 템플릿, 그 외(gemini/openai)는 기존 한글 템플릿을 그대로 사용.
+        # (gemini/openai는 다국어 성능이 검증돼 있어 한글 유지 -- 언어를 바꾸는 게 아니라
+        # "영어 중심으로 학습된 소형 오픈소스 모델"이라는 원인에 대한 대응이라는 점을 명확히 함)
+        active_templates = SCENARIO_TEMPLATES_EN if args.backend == "ollama" else SCENARIO_TEMPLATES
+        prompt_lang = "English" if args.backend == "ollama" else "Korean"
+
+        DEFAULT_SCENARIO = active_templates["oracle_scene_A"]["medium"]
+        scenario_template = active_templates.get(args.scene, {}).get(args.prompt_level, DEFAULT_SCENARIO)
         scenario = scenario_template.format(num_waypoints=num_waypoints)
+        print(f"🌐 Prompt language: {prompt_lang} (backend={args.backend})")
 
         if image_path:
             print(f"📸 Analying Image: {image_path}")
