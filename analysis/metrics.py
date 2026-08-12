@@ -42,15 +42,36 @@ def trajectory_smoothness(qpos: np.ndarray, dt: float = 0.02) -> float:
     return float(np.abs(jerk).mean())
 
 
+def base_stability(qpos: np.ndarray) -> dict:
+    """
+    로봇 몸통(base)의 높이/기울기 안정도. "주춤거림"/"기어들어감" 같은 자세 붕괴는
+    토크나 저크보다 이 지표(특히 base_height_min, base_tilt_max_deg)에서 먼저 드러난다.
+    qpos: load_rollout()의 전체 (T, 19) qpos (freejoint 7 + 관절각 12).
+    freejoint: qpos[:, 0:3]=base xyz, qpos[:, 3:7]=base quaternion(w,x,y,z, MuJoCo 표준).
+    """
+    base_z = qpos[:, 2]
+    qx, qy = qpos[:, 4], qpos[:, 5]
+    cos_tilt = 1 - 2 * (qx**2 + qy**2)  # 몸통 +z축이 월드 +z축에서 얼마나 기울었는지
+    tilt_deg = np.degrees(np.arccos(np.clip(cos_tilt, -1.0, 1.0)))
+    return {
+        "base_height_min": float(base_z.min()),
+        "base_height_mean": float(base_z.mean()),
+        "base_tilt_max_deg": float(tilt_deg.max()),
+        "base_tilt_mean_deg": float(tilt_deg.mean()),
+    }
+
+
 def summarize(data: dict) -> dict:
     """load_rollout() 결과 dict 하나를 받아 실험 C 지표를 한 번에 계산."""
     ctrl = data["ctrl"]
     qfrc_joints = data["qfrc_actuator"][:, 6:18]  # freejoint 6개 제외, 관절 12개만
-    return {
+    result = {
         "torque_violation_rate": torque_limit_violation_rate(ctrl),
         "cmd_actual_error_mean": float(cmd_vs_actual_error(ctrl, qfrc_joints).mean()),
         "smoothness": trajectory_smoothness(data["qpos"]),
     }
+    result.update(base_stability(data["qpos"]))
+    return result
 
 def waypoint_tracking_error(qpos_xy: np.ndarray, judged_path_xy: np.ndarray) -> dict:
     """
