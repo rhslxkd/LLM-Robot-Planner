@@ -26,8 +26,8 @@ MODELS_DIR   = os.path.join(REPO_ROOT, "dial_mpc", "dial_mpc", "models", "unitre
 EXAMPLES_DIR = os.path.join(REPO_ROOT, "dial_mpc", "dial_mpc", "examples")
 DATA_ROOT    = os.path.join(REPO_ROOT, "data")
 
-MARKER_RADIUS = 0.04
-LINE_RADIUS   = 0.012
+MARKER_RADIUS = 0.07
+LINE_RADIUS   = 0.025
 MARKER_HEIGHT = 0.02
 MARKER_RGBA   = "1.0 0.9 0.0 0.95"   # 노란 waypoint 점 (matplotlib 검증 이미지와 통일)
 LINE_RGBA     = "0.9 0.1 0.1 0.85"   # 빨간 연결선

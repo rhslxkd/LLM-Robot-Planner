@@ -152,7 +152,11 @@ def render_scene(scene_path, draw_grid=True):
     stem = os.path.splitext(os.path.basename(scene_path))[0]
     # _viz 접미사가 붙은 씬도 원본 씬과 동일한 PPM을 쓰도록 조회
     lookup_stem = stem[:-4] if stem.endswith("_viz") else stem
-    PPM = SCENE_PPM.get(lookup_stem, PPM_DEFAULT)
+    PPM = PPM_DEFAULT
+    for scene_key, ppm_val in SCENE_PPM.items():
+        if lookup_stem == scene_key or lookup_stem.startswith(scene_key + "_"):
+            PPM = ppm_val
+            break
     FOVY_DEG = _fovy_for_ppm(PPM)
     scene_out_dir = os.path.join(DATA_DIR, stem)
     os.makedirs(scene_out_dir, exist_ok=True)
