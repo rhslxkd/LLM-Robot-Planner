@@ -19,7 +19,6 @@ chroma_db/
 vlm_courtroom/outputs/
 vlm_courtroom/inputs/
 vlm_courtroom/chroma_db/
-data/
 *.png
 
 __pycache__/
@@ -32,7 +31,8 @@ __pycache__/
 results/
 outputs/
 *.npy
-# ─── VLM2Torque: 자동 생성되는 파생 파일 (재현 가능, 버전관리 불필요) ───
+
+# —— VLM2Torque: 자동 생성되는 파생 파일 (재현 가능, 버전관리 불필요) ——
 # draw_path_markers.py가 매번 새로 만드는 마커 삽입 XML/YAML
 dial_mpc/dial_mpc/models/unitree_go2/*_viz.xml
 dial_mpc/dial_mpc/examples/*_viz.yaml
@@ -40,3 +40,7 @@ dial_mpc/dial_mpc/examples/*_viz.yaml
 # 야간 파이프라인 실행 로그
 logs/
 nohup.out
+
+# Paper (drafted locally, not tracked in this branch)
+paper/
+data/

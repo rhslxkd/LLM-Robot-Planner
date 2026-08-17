@@ -49,12 +49,37 @@ def main():
         help="OpenAI model tag to use when --backend=openai (e.g., gpt-4o, gpt-4o-mini). "
              "Required if --backend=openai.",
     )
+    parser.add_argument(
+        "--num-waypoints",
+        type=int,
+        default=None,
+        help="Override the number of waypoints requested from the courtroom "
+             "(default: per-scene hardcoded value, e.g., 10 for most scenes, 15 for E). "
+             "No upper bound enforced -- e.g. --num-waypoints 100 or 200 is allowed for "
+             "the waypoint-count experiment, though very large values may reduce JSON "
+             "parse success rate for weaker/local models (this is itself a metric of interest).",
+    )
+    parser.add_argument(
+        "--prompt-level",
+        type=str,
+        default=None,
+        choices=["rich", "medium", "minimal"],
+        help="Task #5/#6 프롬프트 정보량 ablation: rich(VLN급으로 절차를 거의 알려줌) / "
+             "medium(기존 SCENARIO_TEMPLATES 수준 - 장애물 존재는 알려주되 경로는 안 줌) / "
+             "minimal(장애물 설명 없이 start/goal/물리제약만, 이미지만 보고 판단). "
+             "--scene이 지정되면 필수.",
+    )
     args = parser.parse_args()
 
     if args.backend == "ollama" and not args.ollama_model:
         parser.error("--ollama-model is required when --backend=ollama")
     if args.backend == "openai" and not args.openai_model:
         parser.error("--openai-model is required when --backend=openai")
+    if args.num_waypoints is not None and args.num_waypoints < 2:
+        parser.error("--num-waypoints must be at least 2 (need a start and an end point)")
+    if args.scene is not None and args.prompt_level is None:
+        parser.error("--prompt-level is required when --scene is given "
+                      "(choose rich/medium/minimal for the prompt-richness ablation)")
 
     try:
         # Vertex AI 초기화는 gemini 백엔드를 쓸 때만 필요함
@@ -82,96 +107,129 @@ def main():
                               else os.path.join(IMAGE_DIR, image_filename))
             else:
                 image_path = None
-        
-        # Example Scenario Description (Used if image_path is None or as context)
+
+        # 웨이포인트 개수 계산을 시나리오 텍스트 선택보다 먼저 한다 --
+        # 시나리오 텍스트 안의 "N개의 좌표" 문구도 이 값으로 채워야
+        # Coordinate 프롬프트의 "EXACTLY {num_waypoints}" 지시와 모순이 안 생긴다.
+        # Task #5/#6 ablation: 프롬프트 레벨(rich/medium/minimal) 간에는 num_waypoints를
+        # 고정해서 "정보량"만 변수가 되게 한다 (씬별 기존 사용값 그대로 유지: D=12, E=15, A=기본10).
+        NUM_WAYPOINTS = {"oracle_scene_D": 12, "oracle_scene_E": 15}
+        if args.num_waypoints is not None:
+            num_waypoints = args.num_waypoints
+            print(f"⚙️  num_waypoints overridden via CLI: {num_waypoints}")
+        else:
+            num_waypoints = NUM_WAYPOINTS.get(args.scene, 10)
+
+        # Task #5/#6: 프롬프트 정보량 3단계 ablation.
+        #   rich   = 관련연구(LM-Nav 등)처럼 방향/거리를 거의 다 알려줌 (절차를 미리 풀어줌)
+        #   medium = 기존에 쓰던 SCENARIO_TEMPLATES 수준 (장애물 존재/위치는 알려주되 정확한
+        #            경로는 안 줌, courtroom이 스스로 판단)
+        #   minimal = 장애물 설명 자체를 다 빼고 start/goal/물리제약(ROBOT_PHYSICAL_CONSTRAINTS,
+        #             CoordinateAgent가 별도로 항상 주입)만 -- 이미지만 보고 전부 판단하게 함
+        # {num_waypoints} 자리는 아래에서 실제 num_waypoints 값으로 .format() 처리된다 --
+        # 숫자를 하드코딩해두면 "N개 내놔"(시나리오 텍스트)와 "EXACTLY M개"(Coordinate
+        # 프롬프트 자체 지시)가 --num-waypoints 오버라이드 시 서로 모순되는 지시가 된다.
         SCENARIO_TEMPLATES = {
-            "oracle_scene_A": """
-                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
-                그 상황속 사진에 보이듯이, 앞에 빨간 상자 장애물이 하나 있어(크기는 작은 편).
-                이 장애물을 피해서 앞으로 5m 이동할 수 있도록 10개의 좌표를 제시해줘.
-                장애물로부터 최소 안전마진 0.5m만 확보하면 충분해 - 상자 자체가 작으니
-                필요 이상으로 크게 돌아갈 필요가 전혀 없어. 최단 경로에 가깝게, 살짝만 옆으로 틀어서
-                효율적으로 피해가.
-                반드시 상자를 피해가되, 불필요한 과잉 우회는 하지 마.
-                """,
-            "oracle_scene_B": """
-                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
-                그 상황속 사진에 보이듯이, 앞에 빨간 상자 장애물이 두 개 있어.
-                첫 번째 상자(가까운 것, 로봇 기준 위쪽에 위치)는 아래쪽으로 살짝만 틀어서 피하고,
-                두 번째 상자(먼 것, 로봇 기준 아래쪽에 위치)는 위쪽으로 살짝만 틀어서 피해서,
-                지그재그(S자)로 최단 경로에 가깝게 앞으로 6.5m 이동할 수 있도록 10개의 좌표를 제시해줘.
-                각 상자로부터 최소 안전마진 0.5m는 반드시 확보하되, 불필요하게 크게 우회하지 말고
-                최대한 직선에 가까운 효율적인 경로로 움직여.
-                반드시 두 상자를 모두 피해가야해.
-                """,
-            "oracle_scene_C": """
-                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
-                그 상황속 사진에 보이듯이, 앞에 상자 형태의 장애물이 세 개 있어(위-아래-위 순서로 지그재그 배치, 크기도 서로 다름).
-                세 장애물을 순서대로 피하면서 지그재그(슬랄롬) 형태로 앞으로 7m 이동할 수 있도록
-                14개의 좌표를 제시해줘.
+            "oracle_scene_A": {
+                "rich": """
+                    로봇(go2)이 전방의 작은 빨간 장애물을 피해 (5,0)까지 이동해야 해.
+                    대략 1.5m 전진한 후 오른쪽(-y 방향)으로 약 0.5m 틀어서 장애물을 통과하고,
+                    이후 다시 왼쪽(+y 방향)으로 중앙선(y=0)에 복귀하며 남은 거리를 전진해.
+                    이 절차를 따라 {num_waypoints}개의 좌표를 제시해줘.
+                    """,
+                "medium": """
+                    중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                    그 상황속 사진에 보이듯이, 앞에 빨간 상자 장애물이 하나 있어(크기는 작은 편).
+                    이 장애물을 피해서 앞으로 5m 이동할 수 있도록 {num_waypoints}개의 좌표를 제시해줘.
+                    장애물로부터 최소 안전마진 0.5m만 확보하면 충분해 - 상자 자체가 작으니
+                    필요 이상으로 크게 돌아갈 필요가 전혀 없어. 최단 경로에 가깝게, 살짝만 옆으로 틀어서
+                    효율적으로 피해가.
+                    반드시 상자를 피해가되, 불필요한 과잉 우회는 하지 마.
+                    """,
+                "minimal": """
+                    로봇(go2)은 (0,0)에서 시작해서 (5,0)까지 이동해야 해.
+                    이미지를 보고 안전하게 도달할 수 있는 {num_waypoints}개의 좌표를 제시해줘.
+                    """,
+            },
+            "oracle_scene_D": {
+                "rich": """
+                    로봇(go2)이 전방의 좁은 통로를 따라 (7,0)까지 이동해야 해.
+                    통로 중앙(y=0)을 유지하며 곧장 전진하면 돼 - 별도의 방향 전환 없이
+                    0m 지점부터 7m 지점까지 y=0 직선을 따라 {num_waypoints}개의 좌표를 균등하게 배치해줘.
+                    """,
+                "medium": """
+                    중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                    그 상황속 사진에 보이듯이, 로봇의 양옆으로 붉은 벽이 길게 이어져
+                    좁은 통로를 이루고 있어.
+                    이 통로를 따라 앞으로 7m 이동할 수 있는 {num_waypoints}개의 좌표를 제시해줘.
+                    통로의 폭이 로봇이 안전하게 통과하기에 충분한지는 스스로
+                    물리적 제약 조건(유효 클리어런스, 최소 통과 폭)을 근거로 판단해서 결정해.
+                    충분하다고 판단되면 중앙선을 유지하며 직진하는 경로를,
+                    불충분하다고 판단되면 그 판단과 근거를 명확히 설명해.
+                    """,
+                "minimal": """
+                    로봇(go2)은 (0,0)에서 시작해서 (7,0)까지 이동해야 해.
+                    이미지를 보고 안전하게 도달할 수 있는 {num_waypoints}개의 좌표를 제시해줘.
+                    """,
+            },
+            "oracle_scene_E": {
+                "rich": """
+                    중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                    로봇은 사방이 벽으로 둘러싸인 방 안에 있고, 그 안에 기둥 형태의 장애물이 세 개 있어.
 
-                가장 중요한 것은 각 장애물을 정확한 위치에서 안전마진만큼 피해가는 것이야 - 이걸 절대 희생하지 마.
-                그 다음으로, waypoint 사이의 급격한 방향전환(90도에 가까운 꺾임)만 피해서
-                각 지점을 좀 더 촘촘하고 매끄럽게 연결해줘.
-                안전 회피가 우선이고 부드러움은 그 다음이야 - 부드러움을 위해 장애물과의 거리를 희생하면 안 돼.
-                각 상자로부터 최소 안전마진을 확보하되 불필요하게 크게 우회하지는 마.
-                반드시 세 상자를 모두 정확히 피해가야해.
-                """,
-            "oracle_scene_D": """
-                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
-                그 상황속 사진에 보이듯이, 로봇의 양옆으로 붉은 벽이 길게 이어져
-                좁은 통로를 이루고 있어.
-                이 통로를 따라 앞으로 7m 이동할 수 있는 12개의 좌표를 제시해줘.
-                통로의 폭이 로봇이 안전하게 통과하기에 충분한지는 스스로
-                물리적 제약 조건(유효 클리어런스, 최소 통과 폭)을 근거로 판단해서 결정해.
-                충분하다고 판단되면 중앙선을 유지하며 직진하는 경로를,
-                불충분하다고 판단되면 그 판단과 근거를 명확히 설명해.
-                """,
-            "oracle_scene_E": """
-                중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
-                로봇은 사방이 벽으로 둘러싸인 방 안에 있고, 그 안에 기둥 형태의 장애물이 세 개 있어.
+                    ⚠️ 매우 중요: 이 기둥들은 작은 점 장애물이 아니라, 방 높이의 대부분을 막는 긴 벽이야.
+                    중심점에서 조금만 벗어나면 되는 게 아니라, 벽의 가장자리(끝)를 완전히 지나쳐야 해.
+                    각 기둥이 정확히 어디를 막고 있는지, 그리고 로봇이 반드시 도달해야 하는 y값은 다음과 같아
+                    (이 숫자들은 정확히 계산된 값이니 그대로 따라야 해):
 
-                ⚠️ 매우 중요: 이 기둥들은 작은 점 장애물이 아니라, 방 높이의 대부분을 막는 긴 벽이야.
-                중심점에서 조금만 벗어나면 되는 게 아니라, 벽의 가장자리(끝)를 완전히 지나쳐야 해.
-                각 기둥이 정확히 어디를 막고 있는지, 그리고 로봇이 반드시 도달해야 하는 y값은 다음과 같아
-                (이 숫자들은 정확히 계산된 값이니 그대로 따라야 해):
+                    1. 첫 번째 기둥(x=1.5 부근): y=-0.4부터 위쪽 전부를 막고 있어. 로봇은 이 기둥을 지날 때
+                       반드시 y가 -1.2 이하가 되어야 해 (즉 -1.2보다 더 아래로, 예: -1.3, -1.5 등).
+                    2. 두 번째 기둥(x=3.5 부근): y=0.4부터 아래쪽 전부를 막고 있어. 로봇은 이 기둥을 지날 때
+                       반드시 y가 +1.2 이상이 되어야 해 (즉 1.2보다 더 위로, 예: 1.3, 1.5 등).
+                    3. 세 번째 기둥(x=5.5 부근): y=-0.4부터 위쪽 전부를 막고 있어. 로봇은 이 기둥을 지날 때
+                       반드시 y가 -1.2 이하가 되어야 해.
 
-                1. 첫 번째 기둥(x=1.5 부근): y=-0.4부터 위쪽 전부를 막고 있어. 로봇은 이 기둥을 지날 때
-                   반드시 y가 -1.2 이하가 되어야 해 (즉 -1.2보다 더 아래로, 예: -1.3, -1.5 등).
-                2. 두 번째 기둥(x=3.5 부근): y=0.4부터 아래쪽 전부를 막고 있어. 로봇은 이 기둥을 지날 때
-                   반드시 y가 +1.2 이상이 되어야 해 (즉 1.2보다 더 위로, 예: 1.3, 1.5 등).
-                3. 세 번째 기둥(x=5.5 부근): y=-0.4부터 위쪽 전부를 막고 있어. 로봇은 이 기둥을 지날 때
-                   반드시 y가 -1.2 이하가 되어야 해.
-
-                이 세 지점(x≈1.5일 때 y≤-1.2, x≈3.5일 때 y≥1.2, x≈5.5일 때 y≤-1.2)을
-                반드시 통과하도록 15개의 좌표를 만들어줘. 시작점(0,0)에서 목표지점(6.5, 0)까지
-                이동하되, 위 세 지점을 절대 놓치지 말고 정확한 y값(또는 그보다 더 안전한 값)으로
-                통과해야 해. 애매하게 y=±0.5 정도로만 살짝 틀면 절대 안전하지 않아 - 반드시
-                위에서 요구한 y값(±1.2 이상)을 달성해야 해.
-                각 지점 사이는 부드러운 곡선으로 이어지게 하고, 웨이포인트 간 거리는 0.4m~1.0m를 유지해.
-                """,
-            
+                    이 세 지점(x≈1.5일 때 y≤-1.2, x≈3.5일 때 y≥1.2, x≈5.5일 때 y≤-1.2)을
+                    반드시 통과하도록 {num_waypoints}개의 좌표를 만들어줘. 시작점(0,0)에서 목표지점(6.5, 0)까지
+                    이동하되, 위 세 지점을 절대 놓치지 말고 정확한 y값(또는 그보다 더 안전한 값)으로
+                    통과해야 해. 애매하게 y=±0.5 정도로만 살짝 틀면 절대 안전하지 않아 - 반드시
+                    위에서 요구한 y값(±1.2 이상)을 달성해야 해.
+                    각 지점 사이는 부드러운 곡선으로 이어지게 하고, 웨이포인트 간 거리는 0.4m~1.0m를 유지해.
+                    """,
+                "medium": """
+                    중앙에 있는 로봇(go2)이 앞으로 가야하는 상황이야.
+                    로봇은 사방이 벽으로 둘러싸인 방 안에 있고, 그 안에 기둥 형태의 장애물이 세 개 있어.
+                    이 기둥들은 작은 점 장애물이 아니라 방 높이의 대부분을 막는 긴 벽이라서,
+                    중심점에서 살짝 벗어나는 정도로는 부족하고 벽의 끝을 완전히 지나쳐야 해.
+                    사진을 보고 각 기둥의 위치와 막고 있는 범위를 스스로 판단해서,
+                    시작점(0,0)에서 목표지점(6.5,0)까지 세 기둥을 모두 안전하게 피해가는
+                    {num_waypoints}개의 좌표를 제시해줘. 각 지점 사이는 부드러운 곡선으로 연결하고
+                    웨이포인트 간 거리는 0.4m~1.0m를 유지해.
+                    """,
+                "minimal": """
+                    로봇(go2)은 (0,0)에서 시작해서 (6.5,0)까지 이동해야 해.
+                    이미지를 보고 안전하게 도달할 수 있는 {num_waypoints}개의 좌표를 제시해줘.
+                    """,
+            },
         }
 
-        DEFAULT_SCENARIO = SCENARIO_TEMPLATES["oracle_scene_A"]
-        scenario = SCENARIO_TEMPLATES.get(args.scene, DEFAULT_SCENARIO)
-        
+        DEFAULT_SCENARIO = SCENARIO_TEMPLATES["oracle_scene_A"]["medium"]
+        scenario_template = SCENARIO_TEMPLATES.get(args.scene, {}).get(args.prompt_level, DEFAULT_SCENARIO)
+        scenario = scenario_template.format(num_waypoints=num_waypoints)
+
         if image_path:
             print(f"📸 Analying Image: {image_path}")
             # Image size: 1263x1080. Robot is perfectly centered.
             # New calibrated robot_pos: (631, 540)
             # New scale: 150.0 (Making 1m represent fewer pixels, thus AI plans longer jumps)
             # 씬별로 카메라 시야를 넓힌 경우, oracle_gen.py 의 SCENE_PPM 과 반드시 동일값 유지
-            SCENE_SCALE = {"oracle_scene_C": 90.0, "oracle_scene_E": 90.0, "oracle_scene_D": 90.0}
+            SCENE_SCALE = {"oracle_scene_D": 90.0, "oracle_scene_E": 90.0}
             robot_pos = (421, 540)  # oracle_gen.py 의 ROBOT_PX(IMG_W/3, IMG_H/2) 와 반드시 동일값 유지
             scale = SCENE_SCALE.get(args.scene, 150.0)
         else:
             print(f"Scenario Description: {scenario}")
             robot_pos = None
             scale = None
-        
-        NUM_WAYPOINTS = {"oracle_scene_C": 14, "oracle_scene_E": 15}
-        num_waypoints = NUM_WAYPOINTS.get(args.scene, 10)
 
         # variant: 백엔드/모델 식별자. scene_name(원래 씬 이름, 입력 이미지 위치)은 그대로 두고,
         # 출력만 data/<scene>/<variant>/ 하위 폴더로 분리한다.
@@ -191,12 +249,24 @@ def main():
         elif args.backend == "openai":
             safe_openai_tag = args.openai_model.replace(":", "_").replace(".", "_").replace("-", "_")
             variant = f"openai_{safe_openai_tag}"
+
+        # Task #5/#6 ablation: 프롬프트 레벨을 variant에 반영해서 같은 씬/백엔드라도
+        # rich/medium/minimal 결과가 서로 안 덮어쓰게 한다.
+        if args.prompt_level is not None:
+            variant = f"{variant}_ablation_{args.prompt_level}"
+
+        # 웨이포인트 개수를 CLI로 오버라이드한 경우, variant에 접미사를 붙여서
+        # 같은 씬/백엔드로 개수만 다르게 돌린 실험 결과들이 서로 안 덮어쓰게 한다
+        # (기본값 그대로 쓴 경우엔 접미사 없음 -> 기존 결과 위치와 호환 유지).
+        if args.num_waypoints is not None:
+            variant = f"{variant}_wp{num_waypoints}"
+
         if args.scene:
             print(f"🗂️  Output directory: data/{args.scene}/{variant}/")
 
         court.run_case(scenario, image_path=image_path, robot_pos=robot_pos, scale=scale,
                        scene_name=args.scene, num_waypoints=num_waypoints, variant=variant)
-        
+
     except Exception as e:
         print(f"❌ An error occurred: {e}")
         import traceback

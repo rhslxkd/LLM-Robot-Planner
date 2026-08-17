@@ -26,8 +26,8 @@ MODELS_DIR   = os.path.join(REPO_ROOT, "dial_mpc", "dial_mpc", "models", "unitre
 EXAMPLES_DIR = os.path.join(REPO_ROOT, "dial_mpc", "dial_mpc", "examples")
 DATA_ROOT    = os.path.join(REPO_ROOT, "data")
 
-MARKER_RADIUS = 0.04
-LINE_RADIUS   = 0.012
+MARKER_RADIUS = 0.07   # 논문 Fig.4 가독성을 위해 0.04 -> 0.07로 확대
+LINE_RADIUS   = 0.025   # 논문 Fig.4 가독성을 위해 0.012 -> 0.025로 확대
 MARKER_HEIGHT = 0.02
 MARKER_RGBA   = "1.0 0.9 0.0 0.95"   # 노란 waypoint 점 (matplotlib 검증 이미지와 통일)
 LINE_RGBA     = "0.9 0.1 0.1 0.85"   # 빨간 연결선
@@ -35,6 +35,16 @@ LINE_RGBA     = "0.9 0.1 0.1 0.85"   # 빨간 연결선
 
 def build_marker_xml(path_points):
     lines = ["", "    <!-- ===== VLM 경로 시각 마커 (자동 생성, 물리 영향 없음) ===== -->"]
+    # 로봇 원점(0,0) -> 첫 판정 waypoint 구간도 그려준다. DIAL-MPC가 실제로 로봇을
+    # 원점에서 wp_0까지 이동시키며 실행하는 구간이라 데이터상 존재하는 경로이고,
+    # 그림에서 "시작점이 붕 떠 보이는" 문제만 없애준다 (새 waypoint를 추가하는 게 아님).
+    if path_points and (abs(path_points[0][0]) > 1e-6 or abs(path_points[0][1]) > 1e-6):
+        x0, y0 = path_points[0]
+        lines.append(
+            f'    <geom name="wp_origin_line" type="capsule" size="{LINE_RADIUS}" '
+            f'fromto="0.0000 0.0000 {MARKER_HEIGHT} {x0:.4f} {y0:.4f} {MARKER_HEIGHT}" '
+            f'rgba="{LINE_RGBA}" contype="0" conaffinity="0"/>'
+        )
     for i, (x, y) in enumerate(path_points):
         lines.append(
             f'    <geom name="wp_{i}" type="sphere" size="{MARKER_RADIUS}" '
