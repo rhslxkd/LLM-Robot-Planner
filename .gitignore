@@ -44,3 +44,7 @@ nohup.out
 # Paper (drafted locally, not tracked in this branch)
 paper/
 data/
+
+# Neural A* (별도 repo, 자체 .git+submodule 있음 -- vlm_courtroom/dial_mpc와
+# 나란히 두되 우리 repo git 히스토리에는 안 들어가게)
+neural-astar/neural-astar/
