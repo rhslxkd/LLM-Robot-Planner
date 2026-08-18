@@ -60,7 +60,10 @@ class VLMCourt:
 
         # 2. Prosecutor Agent
         print("--- [Step 2] Prosecutor Agent (Critique) ---")
-        pros_msg = self.prosecutor_agent.process({'last_message_content': coord_msg.content})
+        pros_msg = self.prosecutor_agent.process({
+            'last_message_content': coord_msg.content,
+            'num_waypoints': num_waypoints
+            })
         print(f"⚖️ Prosecution:\n{pros_msg.content}\n")
 
         # 3. Defense Agent

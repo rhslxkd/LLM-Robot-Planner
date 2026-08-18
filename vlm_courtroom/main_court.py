@@ -69,6 +69,12 @@ def main():
              "minimal(장애물 설명 없이 start/goal/물리제약만, 이미지만 보고 판단). "
              "--scene이 지정되면 필수.",
     )
+    parser.add_argument(
+        "--image-path",
+        type=str,
+        default=None,
+        help="Override input image path (e.g. Neural A* overlay result) instead of default <scene>/oracle.png.",
+    )
     args = parser.parse_args()
 
     if args.backend == "ollama" and not args.ollama_model:
@@ -98,7 +104,7 @@ def main():
         # [Configuration]
         if args.scene:
             data_dir = os.path.join(project_root, "data", args.scene)
-            image_path = os.path.join(data_dir, "oracle.png")
+            image_path = args.image_path if args.image_path else os.path.join(data_dir, "oracle.png")
         else:
             IMAGE_DIR = "/home/user/hyeonsoo/LLM-Robot-Planner/vlm_courtroom/inputs/"
             image_filename = "brax (1).png"
