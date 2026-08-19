@@ -48,6 +48,7 @@ SCENE_PPM = {
     "oracle_scene_C": 90.0,
     "oracle_scene_E": 90.0,
     "oracle_scene_D": 90.0,
+    "oracle_scene_R": 90.0
 }
 ROBOT_PX     = (IMG_W / 3, IMG_H / 2)    # 로봇을 화면 좌측 1/3에 배치 -> 전방 시야 확보 (기존 중앙 631.5 -> 421)
 CAM_HEIGHT   = 50.0                      # 높을수록 orthographic 근접

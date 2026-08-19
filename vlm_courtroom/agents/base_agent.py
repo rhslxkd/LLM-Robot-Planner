@@ -116,33 +116,29 @@ class VLMAgent(ABC):
         except Exception as e:
             return f"Error generating response: {e}"
 
-    def _generate_ollama(self, prompt: str, image_path: Optional[str] = None) -> str:
-        """Ollama 로컬 서버(/api/generate) 호출. Vision 입력은 base64 인코딩된
-        images 리스트로 전달 (Ollama API 규격)."""
-        try:
-            payload: Dict[str, Any] = {
-                "model": self.ollama_model,
-                "prompt": prompt,
-                "stream": False,
-            }
+    def _generate_ollama(self, prompt: str, image_path: Optional[str] = None,
+                          max_retries: int = 3, base_delay: float = 5.0) -> str:
+        import time
+        payload: Dict[str, Any] = {"model": self.ollama_model, "prompt": prompt, "stream": False}
+        if image_path:
+            with open(image_path, "rb") as f:
+                image_bytes = f.read()
+            payload["images"] = [base64.b64encode(image_bytes).decode("utf-8")]
 
-            if image_path:
-                with open(image_path, "rb") as f:
-                    image_bytes = f.read()
-                payload["images"] = [base64.b64encode(image_bytes).decode("utf-8")]
-
-            resp = requests.post(
-                f"{OLLAMA_BASE_URL}/api/generate",
-                json=payload,
-                timeout=300,  # 로컬 모델은 응답이 느릴 수 있어 넉넉히
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data.get("response", "")
-        except requests.exceptions.RequestException as e:
-            return f"Error generating response (Ollama connection): {e}"
-        except Exception as e:
-            return f"Error generating response (Ollama): {e}"
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                resp = requests.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=300)
+                resp.raise_for_status()
+                return resp.json().get("response", "")
+            except Exception as e:
+                last_error = e
+            if attempt == max_retries:
+                break
+            delay = base_delay * (2 ** attempt)
+            print(f"[{self.name}] ⚠️ Ollama 에러 (시도 {attempt+1}/{max_retries+1}): {last_error} -> {delay:.0f}초 후 재시도")
+            time.sleep(delay)
+        return f"Error generating response (Ollama): {last_error}"
 
     def _generate_openai(
         self,

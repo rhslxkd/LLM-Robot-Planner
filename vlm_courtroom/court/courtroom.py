@@ -83,7 +83,23 @@ class VLMCourt:
             'num_waypoints': num_waypoints
         })
         print(f"👨‍⚖️ Verdict:\n{judge_msg.content}\n")
-        
+
+        # 4.5 전체 대화 로그 저장 (REJECTED 케이스도 항상 남김 -- 디버깅/논문용)
+        if scene_name:
+            current_file_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(current_file_dir)
+            repo_root = os.path.dirname(project_root)
+            base_dir = os.path.join(repo_root, "data", scene_name)
+            log_dir = os.path.join(base_dir, variant) if variant else base_dir
+            os.makedirs(log_dir, exist_ok=True)
+            transcript_path = os.path.join(log_dir, "transcript.txt")
+            with open(transcript_path, "w", encoding="utf-8") as f:
+                f.write("=== Coordinate ===\n" + coord_msg.content + "\n\n")
+                f.write("=== Prosecutor ===\n" + pros_msg.content + "\n\n")
+                f.write("=== Defense ===\n" + def_msg.content + "\n\n")
+                f.write("=== Judge ===\n" + judge_msg.content + "\n")
+            print(f"📝 Saved full transcript to: {transcript_path}")
+
         # 5. Visualization (if image_path is provided)
         coordinates = []
         if image_path:

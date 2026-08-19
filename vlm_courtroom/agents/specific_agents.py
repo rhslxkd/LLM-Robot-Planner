@@ -16,21 +16,24 @@ ROBOT_PHYSICAL_CONSTRAINTS = """
              commonly-cited Unitree marketing spec (0.7m x 0.31m), which includes
              fully outstretched legs; the values above reflect the actual simulated
              collision shapes.
-           - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
-             This fully circumscribes the measured footprint even at 45-degree yaw
-             (worst-case half-diagonal is 0.26m) and adds margin for gait sway during
-             trotting, which is not captured by the static collision geometry above.
+           - Do NOT independently derive a required corridor width from this
+             footprint (e.g. do not reason "radius r, so diameter 2r must fit
+             in the gap"). That naive geometric estimate is WRONG and has been
+             superseded by real DIAL-MPC empirical testing. The ONLY authoritative
+             minimum-passable-gap number is the 0.6m figure in Section 2 below --
+             use that number exclusively, never recompute your own.
 
         2. **Safety Protocol**:
-           - Maintain a minimum **Safety Margin of 0.3m** from any detected obstacle
-             (puddles, objects, curbs).
-             (Note: this margin is ON TOP OF the 0.5m dynamic clearance radius above,
-             which already accounts for the robot's physical footprint and gait sway.
-             The margin itself only needs to cover residual uncertainty, so do not
-             treat it as an additional large buffer.)
-           - If a gap between obstacles is narrower than **1.6m** (2 x effective
-             clearance radius of 0.8m), it is considered UNPASSABLE. Do not attempt
-             to go through.
+           - Empirically measured via DIAL-MPC corridor-width stress test (centered
+             straight-line path, Unitree Go2 trot gait): foot lateral excursion from
+             the path centerline reaches up to ~0.28m per foot under normal gait.
+             Degraded-but-stable behavior (feet brushing the boundary, no fall)
+             observed down to a 0.40-0.55m gap. Catastrophic failure (loss of
+             balance) confirmed at a 0.35m gap.
+           - If a gap between obstacles is narrower than **0.6m**, it is considered
+             UNPASSABLE. Do not attempt to go through. (This threshold keeps a
+             margin above the empirically observed degradation zone while staying
+             well clear of the confirmed 0.35m failure point.)
 
         3. **Locomotion Constraints**:
            - Sequential Waypoint Distance (Step Length):
@@ -91,14 +94,23 @@ class CoordinateAgent(VLMAgent):
             3. Do NOT deviate from the drawn path's shape. If part of it appears
             to violate the physical constraints above, note the deviation
             explicitly instead of silently redrawing it.
+            4. For EACH point, ALSO visually estimate its clearance: the width
+            (in meters) of the open gap the path passes through at that point,
+            measured between the nearest obstacles/walls on either side, based
+            on what you actually see in the image (use the axis grid for scale).
+            If the point sits in an open area with no nearby constraining
+            obstacles, use 99 as the clearance value. You are the ONLY agent
+            that sees this image -- downstream agents will rely entirely on
+            these numbers, so estimate carefully rather than guessing.
 
             Output Format:
             ## Path Reading
             (Describe the drawn path's shape and how it relates to obstacles/axis)
 
             ## Coordinates
-            (Return the JSON list here)
-            Example: [{{"x": 1, "y": 2}}, {{"x": 3, "y": 4}}]
+            Each point MUST include x, y, and clearance_m.
+            Example: [{{"x": 1, "y": 2, "clearance_m": 1.3}}, {{"x": 3, "y": 4, "clearance_m": 99}}]
+            (Return the JSON list here, exactly {num_waypoints} points)
 
             Please respond in Korean.
             """
@@ -137,11 +149,20 @@ class ProsecutorAgent(VLMAgent):
         {ROBOT_PHYSICAL_CONSTRAINTS}
 
         Your ONLY job is to verify SAFETY MARGIN compliance -- clearance from
-        obstacles (0.8m effective radius) and minimum passable width (1.6m).
+        obstacles (0.3m effective radius) and minimum passable width (0.6m).
         Do NOT second-guess the overall route choice (which side of an
         obstacle it goes around, general direction) -- that routing decision
         was already produced by a validated search process and is out of
         scope for you. Focus only on margins.
+
+        IMPORTANT: You do NOT see the image yourself -- you can ONLY use the
+        "clearance_m" value the Coordinate agent already estimated for each
+        waypoint (given in the proposal above). Do NOT invent, guess, or
+        re-estimate your own width/distance numbers -- you have no way to
+        verify them independently, and fabricated numbers make your verdict
+        meaningless. Simply compare each waypoint's stated clearance_m against
+        the 0.6m threshold. If clearance_m is missing for a waypoint, treat it
+        as unknown and do not flag it as a violation on that basis alone.
 
         Determine which ONE of these two cases applies, and state it clearly
         as the FIRST line of your response:
@@ -151,7 +172,7 @@ class ProsecutorAgent(VLMAgent):
         the nearest obstacle while keeping the same overall route.
 
         "VERDICT: STRUCTURALLY_INFEASIBLE" -- the path passes through a gap
-        or corridor narrower than 1.6m over an extended stretch (not just a
+        or corridor narrower than 0.6m over an extended stretch (not just a
         single point), so no amount of nudging individual waypoints can
         achieve the required clearance. State the estimated actual width of
         the offending gap and over what distance it stays that narrow.
@@ -170,8 +191,8 @@ class ProsecutorAgent(VLMAgent):
         VERDICT: <LOCALLY_FIXABLE or STRUCTURALLY_INFEASIBLE>
 
         ## Evidence
-        (Cite specific waypoints/segments and estimated distances against
-        the constraints)
+        (Cite specific waypoints/segments and their stated clearance_m values
+        against the constraints -- do not introduce new numbers)
 
         ## Corrected Coordinates (only if LOCALLY_FIXABLE)
         [{{"x": 1, "y": 2}}, {{"x": 3, "y": 4}}]
@@ -208,7 +229,7 @@ class DefenseAttorneyAgent(VLMAgent):
         First, check the Prosecutor's VERDICT line.
 
         If VERDICT: STRUCTURALLY_INFEASIBLE -- this is a measured physical
-        fact (gap width vs 1.6m requirement), NOT a matter of opinion or
+        fact (gap width vs 0.6m requirement), NOT a matter of opinion or
         planning philosophy. You are FORBIDDEN from arguing that the path
         is "conceptually optimal" or blaming the environment as a way to
         soften the verdict -- that is not a valid defense, it is evasion.
@@ -279,7 +300,7 @@ class JudgeAgent(VLMAgent):
 
         CASE 1 - VERDICT: STRUCTURALLY_INFEASIBLE
         This means the path passes through a gap/corridor narrower than the
-        required 1.6m over an extended stretch -- a physical fact, not a
+        required 0.6m over an extended stretch -- a physical fact, not a
         matter of opinion. No local waypoint adjustment can fix this.
         - If the Defense identified a genuinely different alternative route
           that avoids the offending corridor entirely, evaluate whether
@@ -291,7 +312,7 @@ class JudgeAgent(VLMAgent):
           State clearly: "FINAL VERDICT: REJECTED" and explain that the
           scene's geometry itself does not permit a safe path under the
           current physical constraints (cite the measured gap width vs the
-          1.6m requirement). Do NOT output a JSON coordinate list in this
+          0.6m requirement). Do NOT output a JSON coordinate list in this
           case.
 
         CASE 2 - VERDICT: LOCALLY_FIXABLE
