@@ -3,22 +3,37 @@ run_neural_astar_step.py
 neural-astar env 전용. run_random_batch.py(vlm_court env)에서
 `conda run -n neural-astar`로 서브프로세스 호출됨.
 
+Neural A* raw grid path -> world 좌표 변환 -> line-of-sight 경로 단순화
+(visibility-aware shortcutting) -> 목표 waypoint 개수로 보정 -> 각 점의
+실제 통로 폭(clearance_m)을 perpendicular ray-casting으로 결정론적 계산
+-> courtroom에 넘길 coordinate_proposal.json + 오버레이 이미지 저장.
+
 사용: python run_neural_astar_step.py --scene oracle_scene_R000 --goal-x 5.3 --goal-y -1.2
-성공 시 data/<scene>/neural_astar/overlay_solo.png 를 만들고 exit 0.
+성공 시 data/<scene>/neural_astar/{overlay_solo.png, coordinate_proposal.json, path_info.json} 생성, exit 0.
 실패(목표 미도달) 시 exit 1.
 """
 import os, sys, argparse, json as _json
 import numpy as np
 from PIL import Image
 import torch
+from scipy.ndimage import binary_dilation
 
 GRID = 32
 ROBOT_PX = (421.0, 540.0)
 PPM = 150.0
 CKPT_PATH = "neural-astar/model/mazes_032_moore_c8/lightning_logs/version_0"
+TARGET_STEP_M = 0.65      # 로코모션 RECOMMENDED 스텝 길이(0.6~0.7m)에 맞춤
+MIN_WAYPOINTS = 6
+MAX_WAYPOINTS = 25
+WALL_DILATE_PX = 3        # line-of-sight 충돌체크용 마스크 팽창 폭(px). anti-aliasing으로 인한
+                           # 1~2px짜리 렌더링 드롭아웃(false gap)을 막기 위함. clearance 계산에는
+                           # 쓰지 않음(원본 red_mask로 정확한 값 유지).
+MIN_STEP_M = 0.4
+MAX_STEP_M = 1.0
 
 def full_to_grid(px, py, w, h): return px * GRID / w, py * GRID / h
 def grid_to_full(gx, gy, w, h): return gx * w / GRID, gy * h / GRID
+def full_to_world(px, py): return (px - ROBOT_PX[0]) / PPM, (ROBOT_PX[1] - py) / PPM
 
 def extract_ordered_path(mask, start_px, goal_px):
     ys, xs = np.where(mask)
@@ -37,6 +52,120 @@ def extract_ordered_path(mask, start_px, goal_px):
         ordered.append(goal_px)
     return ordered
 
+# ---------- Stage 2: line-of-sight path simplification (visibility-aware shortcutting) ----------
+
+def segment_is_clear(p0, p1, red_mask):
+    h, w = red_mask.shape
+    dist = ((p1[0]-p0[0])**2 + (p1[1]-p0[1])**2) ** 0.5
+    n = max(2, int(dist))  # 픽셀 거리에 비례한 샘플 수 -> 한 픽셀도 안 건너뜀
+    for k in range(n + 1):
+        t = k / n
+        x = p0[0] + (p1[0]-p0[0]) * t
+        y = p0[1] + (p1[1]-p0[1]) * t
+        xi, yi = int(round(x)), int(round(y))
+        if 0 <= yi < h and 0 <= xi < w and red_mask[yi, xi]:
+            return False
+    return True
+
+def simplify_line_of_sight(points, red_mask):
+    if len(points) <= 2:
+        return points
+    simplified = [points[0]]
+    i = 0
+    n = len(points)
+    while i < n - 1:
+        farthest = i + 1
+        for j in range(n - 1, i, -1):
+            if segment_is_clear(points[i], points[j], red_mask):
+                farthest = j
+                break
+        simplified.append(points[farthest])
+        i = farthest
+    return simplified
+
+# ---------- Stage 3: 목표 waypoint 개수로 보정 (이미 안전한 segment 내부에서만 중간점 추가) ----------
+
+def upsample_to_target(points, target_n):
+    pts = list(points)
+    while len(pts) < target_n:
+        idx = max(range(len(pts) - 1),
+                   key=lambda i: (pts[i+1][0]-pts[i][0])**2 + (pts[i+1][1]-pts[i][1])**2)
+        mx = (pts[idx][0] + pts[idx+1][0]) / 2
+        my = (pts[idx][1] + pts[idx+1][1]) / 2
+        pts.insert(idx + 1, (mx, my))
+    return pts
+
+def enforce_step_constraints(points, red_mask, ppm, min_step_m=MIN_STEP_M,
+                              max_step_m=MAX_STEP_M, max_passes=6):
+    """MIN/MAX 보폭 제약을 결정론적으로 강제. VLM 판사가 이 문제로 REJECTED를
+    내리는 걸 애초에 막기 위한 후처리 (Stage 3.5)."""
+    pts = list(points)
+    for _ in range(max_passes):
+        changed = False
+
+        # (a) 너무 긴 구간 -> 중간점 삽입
+        i = 0
+        while i < len(pts) - 1:
+            d = ((pts[i+1][0]-pts[i][0])**2 + (pts[i+1][1]-pts[i][1])**2) ** 0.5 / ppm
+            if d > max_step_m:
+                mx = (pts[i][0] + pts[i+1][0]) / 2
+                my = (pts[i][1] + pts[i+1][1]) / 2
+                pts.insert(i + 1, (mx, my))
+                changed = True
+            i += 1
+
+        # (b) 너무 짧은 구간 -> 뒤쪽 점 제거 (line-of-sight 안전할 때만, 시작/끝점 보존)
+        i = 0
+        while i < len(pts) - 1:
+            d = ((pts[i+1][0]-pts[i][0])**2 + (pts[i+1][1]-pts[i][1])**2) ** 0.5 / ppm
+            remove_idx = i + 1
+            if d < min_step_m and len(pts) > 2 and remove_idx != len(pts) - 1:
+                prev_p, next_p = pts[remove_idx - 1], pts[remove_idx + 1]
+                if segment_is_clear(prev_p, next_p, red_mask):
+                    pts.pop(remove_idx)
+                    changed = True
+                    continue  # 인덱스 유지, 새로 당겨진 다음 구간 재검사
+            i += 1
+
+        if not changed:
+            break
+    return pts
+
+def path_length_m(points, ppm):
+    px_len = sum(((points[i][0]-points[i-1][0])**2 + (points[i][1]-points[i-1][1])**2) ** 0.5
+                 for i in range(1, len(points)))
+    return px_len / ppm
+
+# ---------- Stage 4: 각 점의 실제 통로 폭(clearance_m) - perpendicular ray-casting ----------
+
+def measure_corridor_width_m(points, idx, red_mask, ppm):
+    h, w = red_mask.shape
+    if idx == 0:
+        tx, ty = points[1][0]-points[0][0], points[1][1]-points[0][1]
+    elif idx == len(points) - 1:
+        tx, ty = points[idx][0]-points[idx-1][0], points[idx][1]-points[idx-1][1]
+    else:
+        tx, ty = points[idx+1][0]-points[idx-1][0], points[idx+1][1]-points[idx-1][1]
+    norm = (tx**2 + ty**2) ** 0.5
+    if norm < 1e-6:
+        return 99.0
+    perp_x, perp_y = -ty/norm, tx/norm  # 경로 진행방향에 수직인 단위벡터
+    x0, y0 = points[idx]
+    max_range = max(h, w)
+
+    def cast(dx, dy):
+        for r in range(1, max_range):
+            xi, yi = int(round(x0+dx*r)), int(round(y0+dy*r))
+            if not (0 <= xi < w and 0 <= yi < h):
+                return r  # 이미지 경계 벗어남 = 그쪽은 열려있다고 간주
+            if red_mask[yi, xi]:
+                return r
+        return max_range
+
+    width_px = cast(perp_x, perp_y) + cast(-perp_x, -perp_y)
+    width_m = width_px / ppm
+    return 99.0 if width_m > 8.0 else round(width_m, 2)  # 너무 넓으면 "개방구역"으로 표기
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--scene", required=True)
@@ -53,7 +182,11 @@ def main():
     w, h = img.size
     arr = np.array(img)
     r, g, b = arr[...,0].astype(int), arr[...,1].astype(int), arr[...,2].astype(int)
-    red_mask = (r > 180) & (g < 120) & (b < 120)
+    red_mask = (r > 180) & (g < 120) & (b < 120)  # 고해상도 원본 마스크(다운샘플 전)
+                                                    # -> clearance 계산은 이 원본으로 정확하게
+    # line-of-sight 충돌체크 전용: anti-aliasing 등으로 생기는 1~2px짜리 렌더링 드롭아웃이
+    # 벽에 없는 "바늘구멍"을 만들어 직선 단순화가 벽을 관통하는 걸로 오판하는 걸 방지.
+    red_mask_dilated = binary_dilation(red_mask, iterations=WALL_DILATE_PX)
 
     cell_h, cell_w = h / GRID, w / GRID
     obs = np.zeros((GRID, GRID), dtype=np.float32)
@@ -90,12 +223,9 @@ def main():
         for gy in range(GRID):
             row = ""
             for gx in range(GRID):
-                if (gx, gy) == start_grid:
-                    row += "S"
-                elif (gx, gy) == goal_grid:
-                    row += "G"
-                else:
-                    row += "#" if obs[gy, gx] else "."
+                if (gx, gy) == start_grid: row += "S"
+                elif (gx, gy) == goal_grid: row += "G"
+                else: row += "#" if obs[gy, gx] else "."
             print("  " + row)
 
     try:
@@ -113,32 +243,53 @@ def main():
         dump_diagnostics()
         sys.exit(1)
 
-    wp_full = [grid_to_full(x,y,w,h) for x,y in wp_grid]
+    # ---- Stage 1: grid -> full-res pixel (원시, 촘촘한 경로) ----
+    wp_full_raw = [grid_to_full(x,y,w,h) for x,y in wp_grid]
 
-    path_length_px = sum(
-        ((wp_full[i][0]-wp_full[i-1][0])**2 + (wp_full[i][1]-wp_full[i-1][1])**2)**0.5
-        for i in range(1, len(wp_full))
-    )
-    path_length_m = path_length_px / PPM
+    # ---- Stage 2: line-of-sight 단순화 (팽창된 마스크 기준 -> 렌더링 노이즈로 인한 오탐 방지) ----
+    wp_simplified = simplify_line_of_sight(wp_full_raw, red_mask_dilated)
+
+    # ---- Stage 3: 목표 waypoint 개수로 보정 (안전한 segment 내부에서만 중간점 삽입) ----
+    length_m = path_length_m(wp_simplified, PPM)
+    target_n = max(MIN_WAYPOINTS, min(MAX_WAYPOINTS, round(length_m / TARGET_STEP_M)))
+    wp_final = upsample_to_target(wp_simplified, target_n)
+    wp_final = enforce_step_constraints(wp_final, red_mask_dilated, PPM)
+    final_length_m = path_length_m(wp_final, PPM)
+
+    # ---- Stage 4: 각 점의 실제 통로 폭(clearance_m), perpendicular ray-casting (원본 red_mask 사용) ----
+    coordinates = []
+    for idx, (px, py) in enumerate(wp_final):
+        wx, wy = full_to_world(px, py)
+        clearance = measure_corridor_width_m(wp_final, idx, red_mask, PPM)
+        coordinates.append({"x": round(wx, 2), "y": round(wy, 2), "clearance_m": clearance})
+
+    with open(os.path.join(out_dir, "coordinate_proposal.json"), "w") as f:
+        _json.dump(coordinates, f, indent=2)
     with open(os.path.join(out_dir, "path_info.json"), "w") as f:
-        _json.dump({"path_length_m": path_length_m}, f)
-    print(f"PATH_LENGTH_M: {path_length_m:.2f}")
+        _json.dump({"path_length_m": final_length_m, "num_waypoints": len(wp_final),
+                     "raw_points": len(wp_full_raw), "simplified_points": len(wp_simplified)}, f)
+    print(f"PATH_LENGTH_M: {final_length_m:.2f}  waypoints: {len(wp_final)} (raw {len(wp_full_raw)} -> simplified {len(wp_simplified)} -> final {len(wp_final)})")
 
+    # ---- 오버레이 이미지: 단순화+보정된 최종 경로를 그림 (원본 픽셀 좌표계 그대로 유지, 크롭 없음) ----
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(figsize=(10,8.5))
+    dpi = 100
+    fig = plt.figure(figsize=(w/dpi, h/dpi), dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1])  # 여백 0, 이미지 전체를 꽉 채움
     ax.imshow(img)
-    fx_, fy_ = zip(*wp_full)
+    ax.set_xlim(0, w)
+    ax.set_ylim(h, 0)  # 이미지 좌표계(y축 아래로 증가)와 일치
+    fx_, fy_ = zip(*wp_final)
     ax.plot(fx_, fy_, color="orange", linewidth=2)
+    ax.scatter(fx_, fy_, c="orange", s=15, zorder=4)
     ax.scatter(*start_full, c="green", s=60, zorder=5)
     ax.scatter(*goal_full, c="red", s=60, zorder=5)
     ax.axis("off")
     overlay_path = os.path.join(out_dir, "overlay_solo.png")
-    plt.savefig(overlay_path, dpi=150, bbox_inches="tight")
+    plt.savefig(overlay_path, dpi=dpi)  # bbox_inches="tight" 제거 -> 원본과 동일한 (w,h) 픽셀 크기 보장
     plt.close(fig)
     print(f"OK: {overlay_path}")
-    sys.exit(0)
 
 if __name__ == "__main__":
     main()

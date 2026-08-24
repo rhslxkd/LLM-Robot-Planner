@@ -39,22 +39,21 @@ class VLMCourt:
         self.judge_agent = JudgeAgent(**agent_kwargs)
         print("Agents initialized.")
 
-    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None, scene_name: str = None, num_waypoints: int = 10, variant: str = None):
+    def run_case(self, image_description: str, image_path: str = None, robot_pos: tuple = None, scale: float = None, scene_name: str = None, coordinate_proposal: list = None, variant: str = None):
         """
-        scene_name: 씬 이름 (예: "oracle_scene_A") -- 입력 이미지가 있는 위치 (data/<scene_name>/oracle.png)
-        variant: 백엔드/모델 식별자 (예: "gemini", "ollama_qwen2_5vl_7b") -- 지정하면
-                 출력이 data/<scene_name>/<variant>/ 하위 폴더에 저장되어, 같은 씬을
-                 여러 백엔드/모델로 돌려도 서로 덮어쓰지 않는다. None이면 기존처럼
-                 data/<scene_name>/ 바로 아래에 저장 (하위 호환).
+        coordinate_proposal: run_neural_astar_step.py가 미리 계산한 좌표+clearance_m 리스트
+                              (data/<scene>/neural_astar/coordinate_proposal.json). 이제
+                              num_waypoints는 이 리스트 길이로 자동 결정됨.
         """
+        num_waypoints = len(coordinate_proposal) if coordinate_proposal else 10
         print("\n=== 🏛️ VLM Courtroom Simulation Started 🏛️ ===\n")
-        
+
         # 1. Coordinate Agent
-        print("--- [Step 1] Coordinate Agent (Analyzing & Mapping) ---")
+        print("--- [Step 1] Coordinate Agent (Narrating pre-computed path) ---")
         coord_msg = self.coordinate_agent.process({
             'image_description': image_description,
             'image_path': image_path,
-            'num_waypoints': num_waypoints
+            'coordinate_proposal': coordinate_proposal
         })
         print(f"📍 Proposal:\n{coord_msg.content}\n")
 
@@ -69,7 +68,7 @@ class VLMCourt:
         # 3. Defense Agent
         print("--- [Step 3] Defense Agent (Rebuttal) ---")
         def_msg = self.defense_agent.process({
-            'last_message_content': coord_msg.content, 
+            'last_message_content': coord_msg.content,
             'prosecution_argument': pros_msg.content
         })
         print(f"🛡️ Defense:\n{def_msg.content}\n")
@@ -84,7 +83,7 @@ class VLMCourt:
         })
         print(f"👨‍⚖️ Verdict:\n{judge_msg.content}\n")
 
-        # 4.5 전체 대화 로그 저장 (REJECTED 케이스도 항상 남김 -- 디버깅/논문용)
+        # 4.5 전체 대화 로그 저장
         if scene_name:
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
@@ -100,7 +99,7 @@ class VLMCourt:
                 f.write("=== Judge ===\n" + judge_msg.content + "\n")
             print(f"📝 Saved full transcript to: {transcript_path}")
 
-        # 5. Visualization (if image_path is provided)
+        # 5. Visualization
         coordinates = []
         if image_path:
             coordinates = self.visualize_path(image_path, judge_msg.content, robot_pos, scale, scene_name, variant)

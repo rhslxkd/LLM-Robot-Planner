@@ -53,82 +53,51 @@ ROBOT_PHYSICAL_CONSTRAINTS = """
 class CoordinateAgent(VLMAgent):
         def __init__(self, name="CoordinateAgent", **kwargs):
             super().__init__(name, "Coordinate Generator", model_role="COORDINATE", **kwargs)
-            # NOTE: ChromaDB(VectorDB) 저장 로직 제거됨.
-            # 과거엔 self.collection.add()로 제안 좌표를 저장했으나, 어디서도 query()로
-            # 조회하지 않아 실질적으로 아무 기능이 없는 오버헤드였음(임베딩 계산 + 디스크 I/O
-            # + case가 쌓일수록 느려지는 collection.get() 전체 스캔). 4-agent 간 정보 공유는
-            # courtroom.py의 순차적 컨텍스트 전달(dict)로 이미 이루어지고 있으므로 제거.
-            # 최종 판결 좌표는 courtroom.py의 visualize_path()에서 last_judged_path.json으로
-            # 영속 저장된다.
 
         def process(self, context: Dict[str, Any]) -> Message:
-            print(f"[{self.name}] Reading pre-planned path from image...")
+            print(f"[{self.name}] Narrating pre-computed path (no coordinate math)...")
 
             image_path = context.get('image_path')
             image_description = context.get('image_description', 'A scene with obstacles.')
-            num_waypoints = context.get('num_waypoints', 10)
+            coordinate_proposal = context.get('coordinate_proposal')
+
+            if not coordinate_proposal:
+                print(f"[{self.name}] ⚠️ coordinate_proposal이 context에 없음 -- 빈 응답 반환")
+                return Message(self.name, "Error: no coordinate_proposal provided", "coordinate_proposal")
+
+            proposal_json = json.dumps(coordinate_proposal, ensure_ascii=False)
+            num_waypoints = len(coordinate_proposal)
 
             prompt = f"""
             You are a robot navigation assistant.
-            The provided image shows a top-down scene with a world-coordinate axis
-            grid (labeled in meters, e.g. "+1.0m", "-2.0m") and a path ALREADY
-            DRAWN on it: an orange line from the START point (green dot) to the
-            GOAL point (red dot). This path was computed by a validated search
-            algorithm -- it already avoids all obstacles.
+            A path has ALREADY been computed by a validated search algorithm AND
+            precisely measured by a deterministic geometry module -- every
+            coordinate and every "clearance_m" value below is EXACT, computed
+            directly from the occupancy map, not an estimate.
 
-            Your job is NOT to invent a new path. Your job is to READ the drawn
-            orange path off the image and convert it into the robot's world
-            coordinate frame, using the visible axis labels as your reference.
+            Exact waypoints (world frame, start=(0,0), +X=forward), {num_waypoints} points:
+            {proposal_json}
+
             Scene context: {image_description}
-            {ROBOT_PHYSICAL_CONSTRAINTS}
+            The provided image shows this same path drawn on the scene for your
+            reference.
 
-            Task:
-            1. Describe where the drawn orange path goes relative to the axis
-            labels and obstacles (e.g., "corridor를 y=0 근처로 통과").
-            2. Sample EXACTLY {num_waypoints} points evenly spaced along the
-            drawn orange path (not invented) and convert each to the robot's
-            world frame: start point = (0, 0), +X = forward.
-            This number ({num_waypoints}) is not optional -- the output list
-            MUST contain exactly {num_waypoints} points, ordered from start
-            to goal.
-            3. Do NOT deviate from the drawn path's shape. If part of it appears
-            to violate the physical constraints above, note the deviation
-            explicitly instead of silently redrawing it.
-            4. For EACH point, ALSO visually estimate its clearance: the width
-            (in meters) of the open gap the path passes through at that point,
-            measured between the nearest obstacles/walls on either side, based
-            on what you actually see in the image (use the axis grid for scale).
-            If the point sits in an open area with no nearby constraining
-            obstacles, use 99 as the clearance value. You are the ONLY agent
-            that sees this image -- downstream agents will rely entirely on
-            these numbers, so estimate carefully rather than guessing.
+            Your ONLY job is to describe, in Korean, how this given path relates
+            to the obstacles/corridors visible in the image (e.g., which gap it
+            threads through, any point where clearance_m looks tight relative to
+            the 0.6m minimum). You MUST NOT alter, recompute, round differently,
+            or re-estimate ANY of the given x/y/clearance_m values -- copy them
+            through EXACTLY as given. Do not add or remove points.
 
             Output Format:
             ## Path Reading
-            (Describe the drawn path's shape and how it relates to obstacles/axis)
+            (Your description here, in Korean)
 
             ## Coordinates
-            Each point MUST include x, y, and clearance_m.
-            Example: [{{"x": 1, "y": 2, "clearance_m": 1.3}}, {{"x": 3, "y": 4, "clearance_m": 99}}]
-            (Return the JSON list here, exactly {num_waypoints} points)
-
-            Please respond in Korean.
+            (Return the EXACT list given above, unchanged, as JSON)
             """
 
             response_text = self.generate_response(prompt, image_path=image_path)
-
-            try:
-                start_idx = response_text.find('[')
-                end_idx = response_text.rfind(']') + 1
-                if start_idx != -1 and end_idx != -1:
-                    coordinates = json.loads(response_text[start_idx:end_idx])
-                else:
-                    print(f"[{self.name}] ⚠️ Could not parse coordinates from output.")
-                    coordinates = []
-            except Exception as e:
-                print(f"[{self.name}] ⚠️ Error parsing JSON: {e}")
-                coordinates = []
-
             return Message(self.name, response_text, "coordinate_proposal")
 
 
