@@ -22,11 +22,11 @@
     <body name="outer_north" pos="3.912 3.075 0.3"><geom type="box" size="4.412 0.075 0.3" material="wall_material"/></body>
     <body name="outer_west" pos="-0.575 0 0.3"><geom type="box" size="0.075 3.150 0.3" material="wall_material"/></body>
     <body name="outer_east" pos="8.399 0 0.3"><geom type="box" size="0.075 3.150 0.3" material="wall_material"/></body>
-    <body name="baffle0" pos="1.675 -0.568 0.3">
-      <geom type="box" size="0.075 2.432 0.3" material="wall_material"/>
+    <body name="baffle0" pos="1.675 -1.168 0.3">
+      <geom type="box" size="0.075 1.832 0.3" material="wall_material"/>
     </body>
-    <body name="baffle1" pos="3.151 0.354 0.3">
-      <geom type="box" size="0.075 2.646 0.3" material="wall_material"/>
+    <body name="baffle1" pos="3.151 -0.954 0.3">
+      <geom type="box" size="0.075 2.046 0.3" material="wall_material"/>
     </body>
   </worldbody>
 </mujoco>

@@ -1,0 +1,3 @@
+load neural-astar/model/mazes_032_moore_c8/lightning_logs/version_0/checkpoints/epoch=33-step=272.ckpt
+PATH_LENGTH_M: 17.52  waypoints: 29 (raw 73 -> simplified 9 -> final 29)
+OK: data/oracle_scene_R006/neural_astar/overlay_solo.png

@@ -1,4 +1,4 @@
-<mujoco model="go2 oracle scene oracle_scene_R001 - random baffle slalom (seed=1)">
+<mujoco model="go2 oracle scene oracle_scene_R003 - random baffle slalom (seed=3)">
   <include file="mjx_go2_robot_only.xml"/>
   <statistic center="0 0 0.1" extent="0.8"/>
   <visual>
@@ -18,15 +18,21 @@
     <light pos="0 0 5" dir="0 0 -1" directional="true" diffuse="1 1 1" ambient="0.4 0.4 0.4" specular="0.2 0.2 0.2"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
-    <body name="outer_south" pos="2.269 -3.075 0.3"><geom type="box" size="2.769 0.075 0.3" material="wall_material"/></body>
-    <body name="outer_north" pos="2.269 3.075 0.3"><geom type="box" size="2.769 0.075 0.3" material="wall_material"/></body>
+    <body name="outer_south" pos="2.476 -3.075 0.3"><geom type="box" size="2.976 0.075 0.3" material="wall_material"/></body>
+    <body name="outer_north" pos="2.476 3.075 0.3"><geom type="box" size="2.976 0.075 0.3" material="wall_material"/></body>
     <body name="outer_west" pos="-0.575 0 0.3"><geom type="box" size="0.075 3.150 0.3" material="wall_material"/></body>
-    <body name="outer_east" pos="5.112 0 0.3"><geom type="box" size="0.075 3.150 0.3" material="wall_material"/></body>
-    <body name="baffle0" pos="0.979 -1.247 0.3">
-      <geom type="box" size="0.075 1.753 0.3" material="wall_material"/>
+    <body name="outer_east" pos="5.527 0 0.3"><geom type="box" size="0.075 3.150 0.3" material="wall_material"/></body>
+    <body name="baffle0" pos="2.386 0.330 0.3">
+      <geom type="box" size="0.075 2.670 0.3" material="wall_material"/>
     </body>
-    <body name="baffle1" pos="3.186 1.104 0.3">
-      <geom type="box" size="0.075 1.896 0.3" material="wall_material"/>
+    <body name="baffle1" pos="2.756 -0.698 0.3">
+      <geom type="box" size="0.075 2.302 0.3" material="wall_material"/>
+    </body>
+    <body name="baffle2" pos="2.842 0.618 0.3">
+      <geom type="box" size="0.075 2.382 0.3" material="wall_material"/>
+    </body>
+    <body name="baffle3" pos="3.918 -0.520 0.3">
+      <geom type="box" size="0.075 2.480 0.3" material="wall_material"/>
     </body>
   </worldbody>
 </mujoco>

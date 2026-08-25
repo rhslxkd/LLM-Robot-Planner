@@ -3,8 +3,9 @@ generate_random_baffle_maze.py
 Scene E 패턴(강제 슬라롬)을 랜덤 파라미터로 확장한 미로 생성기.
 방을 벽으로 완전히 감싸고, N개의 배플을 랜덤 배치.
 - 매 배플마다 정확히 한쪽만 열려있어 구조상 항상 기하학적으로 통과 가능(BFS 불필요)
-- open_width를 1.2~2.6m로 랜덤화해서 1.6m 미만(=courtroom REJECT 대상)도 자연히 섞임
+- open_width를 1.6~2.6m로 랜덤화 -> courtroom REJECT 기준(1.6m) 미만 없음, 항상 통과가능
 - 목표 지점(goal_x, goal_y)도 랜덤화, 시작점(0,0)과 최소 거리 보장
+- 쉬운 버전: 배플 수 축소, 방향전환 확률 축소(급슬라롬 방지), 배플 간 최소 간격 보장
 """
 import os
 import random
@@ -39,8 +40,9 @@ TEMPLATE = """<mujoco model="go2 oracle scene {name} - random baffle slalom (see
 """
 
 def generate(seed, name, goal_x_range=(4.0, 8.0), room_half_y=3.0, n_baffles=None,
-             open_width_range=(0.4, 1.4), room_margin=0.5,
-             min_dist_from_start=3.0, goal_y_margin=1.0):
+             open_width_range=(1.6, 2.6), room_margin=0.5,
+             min_dist_from_start=3.0, goal_y_margin=1.0,
+             switch_prob=0.5, min_baffle_spacing=1.2):
     rng = random.Random(seed)
 
     goal_y_bound = room_half_y - goal_y_margin
@@ -53,21 +55,31 @@ def generate(seed, name, goal_x_range=(4.0, 8.0), room_half_y=3.0, n_baffles=Non
         goal_x, goal_y = goal_x_range[1], 0.0
 
     if n_baffles is None:
-        n_baffles = rng.randint(2, 6)
+        n_baffles = rng.randint(2, 4)
 
     room_x_min, room_x_max = -room_margin, goal_x + room_margin
     room_cx = (room_x_min + room_x_max) / 2
     half_len = (room_x_max - room_x_min) / 2
     west_x, east_x = room_x_min, room_x_max
 
-    baffle_xs = sorted(rng.uniform(goal_x * 0.15, goal_x * 0.85) for _ in range(n_baffles))
+    # 최소 간격을 보장하며 배플 x좌표 샘플링 (좁은 구간 중첩 방지)
+    lo, hi = goal_x * 0.15, goal_x * 0.85
+    baffle_xs = []
+    for _ in range(200):
+        cand = sorted(rng.uniform(lo, hi) for _ in range(n_baffles))
+        if all(b2 - b1 >= min_baffle_spacing for b1, b2 in zip(cand, cand[1:])):
+            baffle_xs = cand
+            break
+    if not baffle_xs:
+        baffle_xs = sorted(rng.uniform(lo, hi) for _ in range(n_baffles))  # 폴백
+
     baffles, open_sides, open_widths = [], [], []
     prev_side = None
     for i, bx in enumerate(baffle_xs):
         if prev_side is None:
             side = rng.choice(["north", "south"])
         else:
-            side = ("south" if prev_side == "north" else "north") if rng.random() < 0.8 else prev_side
+            side = ("south" if prev_side == "north" else "north") if rng.random() < switch_prob else prev_side
         prev_side = side
 
         open_width = rng.uniform(*open_width_range)
