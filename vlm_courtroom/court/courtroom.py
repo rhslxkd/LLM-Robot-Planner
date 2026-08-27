@@ -1,13 +1,15 @@
 from vlm_courtroom.agents.specific_agents import (
-    CoordinateAgent, ProsecutorAgent, DefenseAttorneyAgent, JudgeAgent, VerifierAgent
+    CoordinateAgent, ProsecutorAgent, JudgeAgent, VerifierAgent
 )
 from vlm_courtroom.agents.base_agent import Message
 import os
 import re
 import numpy as np
 
-MAX_VERIFY_RETRIES = 3  # Prosecutor->Defense->Judge->시각화->Verifier 루프 최대 반복 횟수
-MIN_CLEARANCE_M = 0.6   # ROBOT_PHYSICAL_CONSTRAINTS와 동일한 임계값
+MAX_VERIFY_RETRIES = 3  # Prosecutor->Judge->시각화->Verifier 루프 최대 반복 횟수 (Defense 폐지)
+MIN_CLEARANCE_M = 0.8   # ROBOT_PHYSICAL_CONSTRAINTS와 동일한 임계값. 2026-08-28 0.6->0.8 상향:
+                         # oracle_scene_R001 실측 DIAL-MPC에서 clearance_m 0.63~0.98m 구간(구
+                         # 기준으로는 통과)에서 로봇이 급회전 중 실제로 넘어지는 것을 확인함.
 GOAL_MARKER_EXCLUDE_PX = 20  # goal 마커 오탐 방지용 제외 반경 (실측: goal 근처에 순수
                               # (255,0,0) 클러스터가 있고 이는 실제 벽 렌더링 색과 다름)
 
@@ -15,7 +17,10 @@ GOAL_MARKER_EXCLUDE_PX = 20  # goal 마커 오탐 방지용 제외 반경 (실�
 def _build_red_mask(image_path, exclude_center_px=None, exclude_radius_px=0):
     """이미지에서 붉은 장애물 픽셀 마스크 생성. exclude_center_px가 주어지면 그 주변
     exclude_radius_px 반경은 마스크에서 제외한다 (goal 마커가 벽과 같은 색 계열이라
-    오탐을 일으키는 문제를 막기 위함)."""
+    오탐을 일으키는 문제를 막기 위함).
+    CRITICAL: image_path는 반드시 "원본" 씬 이미지(경로가 안 그려진, 장애물만 있는 이미지)
+    여야 한다. Neural A*가 자체적으로 그린 경로 오버레이를 넘기면, 그 경로 선이 빨간
+    계열 색으로 그려져 있을 경우 이 마스크가 그 선까지 "벽"으로 오탐할 수 있다."""
     import matplotlib.image as mpimg
     arr = mpimg.imread(image_path)
     if arr.dtype != np.uint8:
@@ -59,8 +64,8 @@ def _perp_dir(points_px, idx):
 def verify_clearance_deterministic(image_path, coordinates, robot_pos, scale, min_clearance_m=MIN_CLEARANCE_M):
     """Judge가 확정한 최종 좌표를 실제 이미지 픽셀 기준으로 재검증. VLM이 눈대중으로
     거리를 추정하게 하지 않고, Neural A* 단계와 동일한 ray-casting을 그대로 재실행해서
-    각 waypoint의 실제 clearance_m을 다시 계산한다 (Prosecutor/Defense가 수정 제안한
-    좌표는 원래의 clearance_m 라벨이 더 이상 정확하지 않을 수 있으므로 반드시 재계산 필요).
+    각 waypoint의 실제 clearance_m을 다시 계산한다 (Prosecutor가 수정 제안한 좌표는
+    원래의 clearance_m 라벨이 더 이상 정확하지 않을 수 있으므로 반드시 재계산 필요).
     마지막 waypoint(goal)는 goal 마커 오탐을 피하기 위해 red_mask에서 그 주변을 제외한다.
     반환: (모두 통과했는가: bool, [(waypoint_idx, 실제_clearance_m), ...] 위반 목록)"""
     if not robot_pos or not scale or not coordinates:
@@ -166,7 +171,6 @@ def compute_bend_suggestions(image_path, coordinates, robot_pos, scale, bad_segm
     points_px = [(rx + c['x'] * scale, ry - c['y'] * scale) for c in coordinates]
     goal_px = points_px[-1]
     red_mask = _build_red_mask(image_path, exclude_center_px=goal_px, exclude_radius_px=GOAL_MARKER_EXCLUDE_PX)
-
     suggestions = []
     cap = max_shift_m * scale
     for (i, j) in bad_segments:
@@ -203,15 +207,18 @@ class VLMCourt:
                  gemini_model: str = None, openai_model: str = None):
         """
         backend: "gemini"(기본값) / "ollama" / "openai"
-        ollama_model: backend="ollama"일 때 5개 에이전트 전부에 적용할 모델 태그
+        ollama_model: backend="ollama"일 때 4개 에이전트 전부에 적용할 모델 태그
                       (예: "qwen2.5vl:7b", "llava-llama3", "qwen3-vl", "minicpm-v")
-        gemini_model: backend="gemini"일 때 지정하면 5개 에이전트 전부 이 모델 하나로
+        gemini_model: backend="gemini"일 때 지정하면 4개 에이전트 전부 이 모델 하나로
                       통일(예: "gemini-2.5-flash", "gemini-2.5-pro"). 지정 안 하면
                       기존처럼 역할별 혼합 매핑(Judge=pro, 나머지=flash)을 씀 --
                       이건 공정한 백본 비교용이 아니라는 점 주의.
-        openai_model: backend="openai"일 때 5개 에이전트 전부에 적용할 모델명
+        openai_model: backend="openai"일 때 4개 에이전트 전부에 적용할 모델명
                       (예: "gpt-4o", "gpt-4o-mini").
-        -- VLM 백본 비교 실험은 5개 에이전트 모두 동일 모델로 통일해서 돌리는 게 원칙.
+        -- VLM 백본 비교 실험은 4개 에이전트 모두 동일 모델로 통일해서 돌리는 게 원칙.
+        (2026-08-28: Defense Attorney 폐지. 모든 transcript에서 예외 없이 Prosecutor에
+        동의만 해서 실질적 교차검증 기능이 없었음 -- 대신 Judge가 Prosecutor의 근거를
+        직접 재검증하는 역할까지 겸함.)
         """
         label = f"backend={backend}"
         if backend == "ollama":
@@ -221,7 +228,6 @@ class VLMCourt:
         elif backend == "openai":
             label += f", openai_model={openai_model}"
         print(f"initializing VLMCourt... ({label})")
-
         agent_kwargs = {"backend": backend}
         if backend == "ollama":
             agent_kwargs["ollama_model"] = ollama_model
@@ -229,10 +235,8 @@ class VLMCourt:
             agent_kwargs["gemini_model"] = gemini_model
         elif backend == "openai":
             agent_kwargs["openai_model"] = openai_model
-
         self.coordinate_agent = CoordinateAgent(**agent_kwargs)
         self.prosecutor_agent = ProsecutorAgent(**agent_kwargs)
-        self.defense_agent = DefenseAttorneyAgent(**agent_kwargs)
         self.judge_agent = JudgeAgent(**agent_kwargs)
         self.verifier_agent = VerifierAgent(**agent_kwargs)
         print("Agents initialized.")
@@ -241,24 +245,27 @@ class VLMCourt:
                  scale: float = None, scene_name: str = None, coordinate_proposal: list = None,
                  variant: str = None):
         """
+        image_path: 반드시 Neural A* 입력으로 쓰인 "원본" 씬 이미지(장애물만 있고 경로가
+                    그려지지 않은 이미지)를 넘길 것 -- Neural A*가 자체적으로 그린 경로
+                    오버레이 이미지를 넘기면 안 됨. (1) 그 경로 선이 벽과 비슷한 색이면
+                    _build_red_mask가 벽으로 오탐할 수 있고, (2) CoordinateAgent/Judge/
+                    Verifier가 Neural A*의 원래 경로 모양에 시각적으로 낚여서 좌표 숫자를
+                    독립적으로 판단하지 못하게 된다. (2026-08-28 재설계 핵심 변경.)
         coordinate_proposal: run_neural_astar_step.py가 미리 계산한 좌표+clearance_m 리스트
                               (data/<scene>/neural_astar/coordinate_proposal.json).
-
-        Prosecutor/Defense/Judge가 자유롭게 waypoint 좌표를 수정 제안할 수 있고,
-        Judge의 최종 경로를 실제로 이미지에 그려서 (1) VerifierAgent의 시각 판단,
-        (2) 결정론적 clearance 재계산, (3) 결정론적 segment(직선) 충돌 재계산,
-        (4) Judge 자신의 REJECTED/STRUCTURALLY_INFEASIBLE 판결 여부까지 4중으로
-        재검사한다. 문제가 있으면 (segment 충돌의 경우 ray-casting으로 계산된 안전한
-        대안 좌표 -- 기존 점 이동안 + 굴절점 삽입안 -- 까지 포함해서) Prosecutor에게
-        피드백을 주고 최대 MAX_VERIFY_RETRIES번 재시도, 그래도 안 되면 최종 REJECTED로
-        마킹.
+        Prosecutor가 좌표 수정을 제안하면 Judge가 최종 판단 및 시각화를 하고, 그 결과를
+        (1) VerifierAgent의 시각 판단, (2) 결정론적 clearance 재계산, (3) 결정론적
+        segment(직선) 충돌 재계산, (4) Judge 자신의 REJECTED/STRUCTURALLY_INFEASIBLE
+        판결 여부까지 4중으로 재검사한다. 문제가 있으면 (segment 충돌의 경우 ray-casting
+        으로 계산된 안전한 대안 좌표 -- 기존 점 이동안 + 굴절점 삽입안 -- 까지 포함해서)
+        Prosecutor에게 피드백을 주고 최대 MAX_VERIFY_RETRIES번 재시도, 그래도 안 되면
+        최종 REJECTED로 마킹.
         """
         print("\n=== 🏛️ VLM Courtroom Simulation Started 🏛️ ===\n")
-
         transcript_sections = []
 
-        # 1. Coordinate Agent (원본 경로 서술 -- 재시도해도 바뀌지 않으므로 한 번만)
-        print("--- [Step 1] Coordinate Agent (Narrating pre-computed path) ---")
+        # 1. Coordinate Agent (원본 씬 서술 -- 재시도해도 바뀌지 않으므로 한 번만)
+        print("--- [Step 1] Coordinate Agent (Scene description) ---")
         coord_msg = self.coordinate_agent.process({
             'image_description': image_description,
             'image_path': image_path,
@@ -276,8 +283,8 @@ class VLMCourt:
         for attempt in range(1, MAX_VERIFY_RETRIES + 1):
             print(f"--- Attempt {attempt}/{MAX_VERIFY_RETRIES} ---")
 
-            # 2. Prosecutor Agent
-            print("--- [Step 2] Prosecutor Agent (Critique / Correction) ---")
+            # 2. Prosecutor Agent (좌표 수정 담당)
+            print("--- [Step 2] Prosecutor Agent (Correction) ---")
             pros_msg = self.prosecutor_agent.process({
                 'last_message_content': coord_msg.content,
                 'retry_feedback': retry_feedback
@@ -285,48 +292,35 @@ class VLMCourt:
             print(f"⚖️ Prosecution:\n{pros_msg.content}\n")
             transcript_sections.append((f"Prosecutor (attempt {attempt})", pros_msg.content))
 
-            # 3. Defense Agent
-            print("--- [Step 3] Defense Agent (Rebuttal / Counter-correction) ---")
-            def_msg = self.defense_agent.process({
-                'last_message_content': coord_msg.content,
-                'prosecution_argument': pros_msg.content
-            })
-            print(f"🛡️ Defense:\n{def_msg.content}\n")
-            transcript_sections.append((f"Defense (attempt {attempt})", def_msg.content))
-
-            # 4. Judge Agent
-            print("--- [Step 4] Judge Agent (Final Verdict) ---")
+            # 3. Judge Agent (최종 판단 -- Defense 없으므로 Prosecutor 근거를 Judge가 직접 재검증)
+            print("--- [Step 3] Judge Agent (Final Verdict) ---")
             judge_msg = self.judge_agent.process({
                 'original_proposal': coord_msg.content,
                 'prosecution_argument': pros_msg.content,
-                'defense_argument': def_msg.content
             })
             print(f"👨‍⚖️ Verdict:\n{judge_msg.content}\n")
             transcript_sections.append((f"Judge (attempt {attempt})", judge_msg.content))
 
-            # 5. 시각화 (Judge 최종 경로를 이미지에 그림)
+            # 4. 시각화 (Judge 최종 경로를 원본 이미지 위에 그림)
             if not image_path:
                 final_coords = []
                 break
-
             final_coords, verdict_image_path = self.visualize_path(
                 image_path, judge_msg.content, robot_pos, scale, scene_name, variant
             )
-
             if not final_coords or not verdict_image_path:
                 print("⚠️ Judge 응답에서 좌표를 파싱하지 못함 -- 재시도해도 의미 없어 종료")
                 break
 
-            # 6. Verifier Agent (시각적으로 "선이 벽에 닿는가"만 판단 -- 거리 추정은 안 함)
-            print("--- [Step 6] Verifier Agent (Visual line-collision check) ---")
+            # 5. Verifier Agent (시각적으로 "선이 벽에 닿는가"만 판단 -- 거리 추정은 안 함)
+            print("--- [Step 5] Verifier Agent (Visual line-collision check) ---")
             verify_msg = self.verifier_agent.process({'image_path': verdict_image_path})
             print(f"🔍 Verification:\n{verify_msg.content}\n")
             transcript_sections.append((f"Verifier (attempt {attempt})", verify_msg.content))
-
             m = re.search(r'COLLISION:\s*(YES|NO)', verify_msg.content, re.IGNORECASE)
             line_collision = (m.group(1).upper() == "YES") if m else True  # 파싱 실패시 보수적으로 충돌 간주
 
-            # 6.5 결정론적 clearance 재검증 (VLM 눈대중 아님, Neural A*와 동일한 ray-casting)
+            # 5.5 결정론적 clearance 재검증 (VLM 눈대중 아님, Neural A*와 동일한 ray-casting)
             clear_ok, violations = verify_clearance_deterministic(image_path, final_coords, robot_pos, scale)
             det_report = ""
             if not clear_ok:
@@ -334,10 +328,7 @@ class VLMCourt:
                 print(f"📐 {det_report}\n")
                 transcript_sections.append((f"Deterministic clearance check (attempt {attempt})", det_report))
 
-            # 6.55 결정론적 segment(직선 구간) 충돌 재검증 -- 개별 점 clearance는 괜찮아도
-            # 점 사이 직선이 코너를 스칠 수 있음 (line-of-sight 문제). Verifier의 자연어
-            # 서술보다 정확한 인덱스를 얻기 위한 구조화된 체크. "기존 점 이동" 제안과
-            # "새 굴절점 삽입" 제안을 둘 다 계산해서 준다 (전자만으로 못 푸는 코너-컷도 있음).
+            # 5.6 결정론적 segment(직선 구간) 충돌 재검증
             seg_ok, bad_segments = verify_segments_deterministic(image_path, final_coords, robot_pos, scale)
             seg_report = ""
             if not seg_ok:
@@ -354,12 +345,10 @@ class VLMCourt:
                 print(f"📏 {seg_report}\n")
                 transcript_sections.append((f"Deterministic segment check (attempt {attempt})", seg_report))
 
-            # 6.6 Judge 자신의 판결도 확인 -- Judge가 REJECTED/STRUCTURALLY_INFEASIBLE이라고
-            # 명시적으로 썼는데 다른 체크만 통과했다고 "성공"으로 처리하면 안 됨
+            # 5.7 Judge 자신의 판결도 확인
             judge_rejected = bool(re.search(r'\b(REJECTED|STRUCTURALLY_INFEASIBLE)\b', judge_msg.content, re.IGNORECASE))
 
             collision = line_collision or (not clear_ok) or (not seg_ok) or judge_rejected
-
             if not collision:
                 print(f"✅ Attempt {attempt}: 시각+결정론적 검증+Judge 판결 모두 통과")
                 verified_clear = True
@@ -371,7 +360,6 @@ class VLMCourt:
                 if not seg_ok:
                     feedback_parts.append(seg_report)
                 elif line_collision:
-                    # segment 체크는 통과했는데 Verifier만 문제 삼은 경우에만 시각 리포트 사용
                     feedback_parts.append(verify_msg.content)
                 if not clear_ok:
                     feedback_parts.append(det_report)
@@ -394,7 +382,7 @@ class VLMCourt:
                         "verdict"
                     )
 
-        # 6.5 전체 대화 로그 저장 (모든 시도 포함)
+        # 전체 대화 로그 저장 (모든 시도 포함)
         if scene_name:
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
@@ -419,48 +407,38 @@ class VLMCourt:
             import matplotlib.pyplot as plt
             import matplotlib.image as mpimg
             import json
-
             json_match = re.search(r'```json\s*(\[.*?\])\s*```', verdict_text, re.DOTALL)
             if not json_match:
                 json_match = re.search(r'\[\s*{.*?}\s*(?:,\s*{.*?}\s*)*\]', verdict_text, re.DOTALL)
-
             if not json_match:
                 print(f"⚠️ Could not find coordinate JSON in verdict. Raw verdict:\n{verdict_text}")
                 return [], None
-
             json_str = json_match.group(1) if json_match.groups() else json_match.group(0)
             json_str = re.sub(r"'([a-zA-Z0-9_]+)'\s*:", r'"\1":', json_str)
             json_str = re.sub(r":\s*'([^']*)'", r': "\1"', json_str)
-
             try:
                 coordinates = json.loads(json_str)
             except json.JSONDecodeError as e:
                 print(f"❌ JSON Parsing failed: {e}")
                 print(f"Raw extracted string: {json_str}")
                 return [], None
-
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
             repo_root = os.path.dirname(project_root)
-
             if scene_name:
                 base_dir = os.path.join(repo_root, "data", scene_name)
                 project_output_dir = os.path.join(base_dir, variant) if variant else base_dir
             else:
                 project_output_dir = os.path.join(project_root, "outputs")
             os.makedirs(project_output_dir, exist_ok=True)
-
             automation_json_path = os.path.join(project_output_dir, "last_judged_path.json")
             with open(automation_json_path, 'w') as f:
                 json.dump(coordinates, f, indent=2)
             print(f"📄 Saved coordinates for automation to: {automation_json_path}")
-
             img = mpimg.imread(image_path)
             fig, ax = plt.subplots(figsize=(10, 10))
             ax.imshow(img)
-
             img_h, img_w = img.shape[:2]
-
             if robot_pos and scale:
                 rx, ry = robot_pos
                 plot_xs = []
@@ -476,57 +454,43 @@ class VLMCourt:
                 scale_y = img_h / 5.0
                 plot_xs = [c['x'] * scale_x for c in coordinates]
                 plot_ys = [c['y'] * scale_y for c in coordinates]
-
             ax.plot(plot_xs, plot_ys, 'r-', linewidth=2, label='Judge Path')
             ax.scatter(plot_xs, plot_ys, c='yellow', s=50, zorder=5)
-
             for i, (x, y) in enumerate(zip(plot_xs, plot_ys)):
                 ax.annotate(f"{i}", (x, y), color='white', fontsize=12, fontweight='bold')
-
             plt.title("Judge's Final Verdict Path")
             plt.legend()
-
             from datetime import datetime
             import shutil
-
             input_filename = os.path.basename(image_path)
             filename_no_ext, ext = os.path.splitext(input_filename)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-
             current_file_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_file_dir)
             repo_root = os.path.dirname(project_root)
-
             if scene_name:
                 project_input_dir = os.path.join(repo_root, "data", scene_name)
             else:
                 project_input_dir = os.path.join(project_root, "inputs")
             os.makedirs(project_input_dir, exist_ok=True)
-
             target_input_path = os.path.join(project_input_dir, input_filename)
-
             if os.path.abspath(image_path) != os.path.abspath(target_input_path):
                 shutil.copy2(image_path, target_input_path)
                 print(f"📂 Copied input image to: {target_input_path}")
             else:
                 print(f"📂 Input image is already in project inputs: {target_input_path}")
-
             if scene_name:
                 base_dir = os.path.join(repo_root, "data", scene_name)
                 project_output_dir = os.path.join(base_dir, variant) if variant else base_dir
             else:
                 project_output_dir = os.path.join(project_root, "outputs")
             os.makedirs(project_output_dir, exist_ok=True)
-
             output_filename = f"{filename_no_ext}_verdict_{timestamp}{ext}"
             output_path_project = os.path.join(project_output_dir, output_filename)
-
             plt.savefig(output_path_project)
             print(f"🖼️ Saved verdict to Project Outputs: {output_path_project}")
-
             plt.close()
             return coordinates, output_path_project
-
         except Exception as e:
             print(f"❌ Visualization failed: {e}")
             return [], None

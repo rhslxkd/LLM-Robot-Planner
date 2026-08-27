@@ -22,7 +22,7 @@ AGENT_MODEL_MAP = {
     "JUDGE": "gemini-2.5-pro",
     "COORDINATE": "gemini-2.5-flash",
     "PROSECUTOR": "gemini-2.5-flash",
-    "DEFENSE": "gemini-2.5-flash"
+    "VERIFIER": "gemini-2.5-flash"
 }
 
 
@@ -55,5 +55,5 @@ def get_model(role: str = "DEFAULT", model_name: str = None):
     model_name이 없으면 기존처럼 역할별 매핑(AGENT_MODEL_MAP)을 사용한다.
     """
     if model_name is None:
-        model_name = AGENT_MODEL_MAP.get(role.upper(), "gemini-1.5-flash")
+        model_name = AGENT_MODEL_MAP.get(role.upper(), "gemini-2.5-flash")
     return GenerativeModel(model_name)
