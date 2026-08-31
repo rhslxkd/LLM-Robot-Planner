@@ -128,12 +128,10 @@ class CoordinateAgent(VLMAgent):
         perpendicular to the path's direction of travel at that exact point.
 
         Task:
-        1. Look at the image. Describe in Korean, in GENERAL/QUALITATIVE terms only,
-           which obstacles/corridors/walls this given path passes through or around
-           (e.g., "1~4번 지점은 남쪽 통로를 통해 벽을 우회한다"). Do NOT state specific
-           numeric coordinate ranges or extents for where a wall begins/ends (e.g., do
-           NOT write things like "벽이 X축 1.0m~2.0m에 걸쳐 있다" or "Y축 -2.0m 지점에
-           틈새 없는 벽이 있다") -- you cannot reliably verify exact wall boundaries from
+        1. Look at the image. Describe, in GENERAL/QUALITATIVE terms only, which
+           obstacles/corridors/walls this given path passes through or around.
+           Do NOT state specific numeric coordinate ranges or extents for where a
+           wall begins/ends -- you cannot reliably verify exact wall boundaries from
            the image, and an invented number here can be mistaken for verified data by
            the Prosecutor/Judge later, causing a false rejection. The ONLY verified
            geometric ground truth is the given x/y/clearance_m data below -- everything
@@ -150,14 +148,13 @@ class CoordinateAgent(VLMAgent):
 
         Output Format:
         ## Scene Analysis
-        (obstacles/corridors visible in the image, in Korean)
+        (obstacles/corridors visible in the image)
         ## Path Description
-        (how the given path relates to those obstacles, waypoint by waypoint, in Korean)
+        (how the given path relates to those obstacles, waypoint by waypoint)
         ## Coordinates
         {proposal_json}
 
-        Please respond in Korean, except the JSON in ## Coordinates which must be copied
-        through exactly as given above.
+        The JSON in ## Coordinates must be copied through exactly as given above.
         """
         response_text = self.generate_response(prompt, image_path=image_path)
         return Message(self.name, response_text, "coordinate_proposal")
@@ -226,10 +223,17 @@ class ProsecutorAgent(VLMAgent):
            If "near_wall_m"/"far_wall_m" are also present, they tell you how close
            this waypoint currently is to the nearest wall on each side of the path
            -- use them ONLY to explain WHY the correction is needed in your
-           reasoning text (e.g., "this point sits only {{near_wall_m}}m from one
-           wall while the other side has {{far_wall_m}}m free"). Do not use them to
+           reasoning text. Do not use them to
            compute your own alternative coordinate; suggested_x/suggested_y is
            already that computation.
+           IMPORTANT: suggested_x/suggested_y is a STARTING correction, not an
+           immutable constant. If applying it creates a NEW conflict with other
+           constraints (e.g. a step-length violation with a neighboring point),
+           you MAY insert an additional midpoint or nudge it slightly further --
+           resolve it the same way you would resolve any other coordinate
+           conflict. Never declare STRUCTURALLY_INFEASIBLE just because a
+           suggested_x/suggested_y value combined with another constraint needs
+           a small additional adjustment; that is a normal LOCALLY_FIXABLE case.
         2. For any OTHER waypoint that still looks unsafe or poorly positioned
            and does NOT have a suggested_x/suggested_y given, you are AUTHORIZED
            to propose a corrected (x, y) yourself -- reason from the given numeric
@@ -249,7 +253,7 @@ class ProsecutorAgent(VLMAgent):
         input if you removed a redundant point or split an overlong segment, but
         avoid unnecessary changes.)
 
-        Please respond in Korean, keep the JSON list in English/Numeric format.
+        Keep the JSON list in English/Numeric format.
         """
         response_text = self.generate_response(prompt)
         return Message(self.name, response_text, "argument_prosecution")
@@ -300,7 +304,7 @@ class JudgeAgent(VLMAgent):
 ```json
         [{{ "x": 1.0, "y": 2.0 }}, {{ "x": 3.5, "y": 4.2 }}]
 ```
-        Please respond in Korean, but keep the JSON strictly in English/Numeric format.
+        Keep the JSON strictly in English/Numeric format.
         """
         response_text = self.generate_response(prompt)
         return Message(self.name, response_text, "verdict")
@@ -329,9 +333,8 @@ class VerifierAgent(VLMAgent):
         other physical constraint -- purely: does the drawn line touch red?
         Answer in exactly this format:
         COLLISION: [YES or NO]
-        DETAILS: (in Korean -- if YES, name the approximate waypoint index or
-        segment where the line crosses a wall, e.g. "waypoint 7과 8 사이 구간이
-        벽을 관통함"; if NO, briefly confirm the path stays clear of all walls)
+        DETAILS: (if YES, name the approximate waypoint index or segment where the
+        line crosses a wall; if NO, briefly confirm the path stays clear of all walls)
         """
         response_text = self.generate_response(prompt, image_path=image_path)
         return Message(self.name, response_text, "verification")

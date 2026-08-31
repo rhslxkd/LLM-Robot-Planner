@@ -6,12 +6,21 @@ import os
 import re
 import numpy as np
 
-MAX_VERIFY_RETRIES = 3  # Prosecutor->Judge->시각화->Verifier 루프 최대 반복 횟수 (Defense 폐지)
+MAX_VERIFY_RETRIES = 5  # 2026-08-31: 3->5 상향. near_wall_m 체크 추가 후, 중간점 삽입 시마다
+                        # 접선 방향이 바뀌어 근처 waypoint의 near_wall_m이 재계산되며 경계값
+                        # 부근(0.36~0.39)에서 계속 걸리는 현상 확인 -- 수렴에 여유 필요.
 MIN_CLEARANCE_M = 0.8   # ROBOT_PHYSICAL_CONSTRAINTS와 동일한 임계값. 2026-08-28 0.6->0.8 상향:
                          # oracle_scene_R001 실측 DIAL-MPC에서 clearance_m 0.63~0.98m 구간(구
                          # 기준으로는 통과)에서 로봇이 급회전 중 실제로 넘어지는 것을 확인함.
 MIN_WALL_DIST_M = 0.4   # 2026-08-31: 통로 전체 폭(clearance_m)과 별개로, 한쪽 벽에
                          # 치우쳐 지나가는 걸 막는 최소 편측 이격거리 기준.
+RECHECK_WALL_DIST_M = 0.3  # 2026-08-31: courtroom 재검증(retry) 단계에서만 쓰는 완화된 기준.
+                         # Neural A* 생성 단계(MIN_WALL_DIST_M=0.4)는 그대로 엄격하게 유지하되,
+                         # retry마다 중간점 삽입으로 접선이 바뀌며 0.36~0.39처럼 경계선에서
+                         # 미세하게 재발하는 오탐(진짜 위험 아님)을 히스테리시스로 흡수.
+CORRECTION_MAX_SHIFT_M = 0.3  # 2026-08-31: 중앙 정렬 보정 이동량 상한 (compute_correction_suggestions의
+                         # center_max_shift_m과 동일 값으로 통일). 상한 없으면 한쪽 벽이 아주 멀 때
+                         # waypoint가 원래 위치에서 크게 벗어나는 문제 있었음 (R001 실측 확인).
 GOAL_MARKER_EXCLUDE_PX = 20  # goal 마커 오탐 방지용 제외 반경 (실측: goal 근처에 순수
                               # (255,0,0) 클러스터가 있고 이는 실제 벽 렌더링 색과 다름)
 
@@ -89,7 +98,8 @@ def verify_clearance_deterministic(image_path, coordinates, robot_pos, scale,
         width_m = (d1 + d2) / scale
         min_side_m = min(d1, d2) / scale
         if width_m < min_clearance_m or min_side_m < min_wall_dist_m:
-            shift_px = (d1 - d2) / 2.0
+            cap_px = CORRECTION_MAX_SHIFT_M * scale
+            shift_px = max(-cap_px, min(cap_px, (d1 - d2) / 2.0))
             cand_x, cand_y = px + perp_x * shift_px, py + perp_y * shift_px
             violations.append({
                 "idx": idx,
@@ -217,6 +227,163 @@ def compute_bend_suggestions(image_path, coordinates, robot_pos, scale, bad_segm
     return suggestions
 
 
+MIN_STEP_M = 0.4   # 2026-08-31: courtroom 자체 결정론적 보폭 체크용 (run_neural_astar_step.py와 동일 값)
+MAX_STEP_M = 1.0
+
+
+def check_step_lengths_deterministic(coordinates, min_step_m=MIN_STEP_M, max_step_m=MAX_STEP_M):
+    """연속 waypoint 간 world-frame 거리가 [min_step_m, max_step_m]을 벗어나는 구간을 찾는다.
+    반환: [(i, i+1, dist_m, "too_long"|"too_short"), ...]"""
+    violations = []
+    for i in range(len(coordinates) - 1):
+        dx = coordinates[i+1]['x'] - coordinates[i]['x']
+        dy = coordinates[i+1]['y'] - coordinates[i]['y']
+        d = (dx**2 + dy**2) ** 0.5
+        if d > max_step_m:
+            violations.append((i, i + 1, round(d, 3), "too_long"))
+        elif d < min_step_m:
+            violations.append((i, i + 1, round(d, 3), "too_short"))
+    return violations
+
+
+def _find_safe_bend_point(p0_px, p1_px, red_mask, scale, max_shift_m=0.6, num_shift_steps=6,
+                           min_clearance_m=MIN_CLEARANCE_M):
+    """p0_px-p1_px 중점에서 시작해 수직 방향으로 조금씩 밀어보며, 양쪽 서브세그먼트가 안전하고
+    그 삽입점 자체의 clearance도 기준을 만족하는 첫 후보를 찾는다 (픽셀 좌표 반환, 못 찾으면 None).
+    compute_bend_suggestions()와 달리 삽입점 자체의 clearance까지 검증한다 -- 좁은 통로에서
+    "일단 벽만 안 닿으면 OK"로 넘어갔다가 그 점 자체가 벽에 바짝 붙는 문제(R012 실측)를 막기 위함."""
+    mx, my = (p0_px[0] + p1_px[0]) / 2.0, (p0_px[1] + p1_px[1]) / 2.0
+    dx, dy = p1_px[0] - p0_px[0], p1_px[1] - p0_px[1]
+    n = (dx ** 2 + dy ** 2) ** 0.5
+    if n < 1e-6:
+        return None
+    perp_x, perp_y = -dy / n, dx / n
+    cap = max_shift_m * scale
+    for step in range(0, num_shift_steps + 1):
+        shift = cap * step / num_shift_steps
+        signs = (1,) if step == 0 else (1, -1)
+        for sign in signs:
+            cx, cy = mx + perp_x * shift * sign, my + perp_y * shift * sign
+            if not (_segment_is_clear(p0_px, (cx, cy), red_mask) and
+                    _segment_is_clear((cx, cy), p1_px, red_mask)):
+                continue
+            d1 = _cast_ray(cx, cy, perp_x, perp_y, red_mask)
+            d2 = _cast_ray(cx, cy, -perp_x, -perp_y, red_mask)
+            if (d1 + d2) / scale >= min_clearance_m:
+                return (cx, cy)
+    return None
+
+
+def deterministic_correct(image_path, coordinates, robot_pos, scale, max_iters=20,
+                           min_clearance_m=MIN_CLEARANCE_M, min_wall_dist_m=RECHECK_WALL_DIST_M,
+                           min_step_m=MIN_STEP_M, max_step_m=MAX_STEP_M):
+    """VLM 없이 순수 ray-casting만으로 좌표를 반복 교정한다 (no-VLM 베이스라인 + courtroom
+    내부의 위험한 즉석 삽입점 방지용으로 겸용). 매 iteration마다 하나의 위반만 고치고
+    처음부터 다시 측정한다 (느리지만 안전 -- 실제로는 전부 numpy 연산이라 매우 빠름):
+    (1) clearance/편향 위반 -> suggested_x/y로 교체
+    (2) 보폭 초과(>1.0m) -> 안전한 굴절점 탐색 후 삽입
+    (3) 보폭 미달(<0.4m) -> 제거해도 안전하면 점 제거 (시작/끝점 보존)
+    (4) segment 벽 관통 -> 안전한 굴절점 삽입
+    넷 다 깨끗해지면 종료. max_iters 넘으면 실패로 반환.
+    반환: (coordinates, passed: bool, log: List[str])"""
+    coords = [dict(c) for c in coordinates]
+    log = []
+    rx, ry = robot_pos
+
+    def to_px(c):
+        return (rx + c['x'] * scale, ry - c['y'] * scale)
+
+    for it in range(1, max_iters + 1):
+        changed = False
+        goal_px = to_px(coords[-1])
+        red_mask = _build_red_mask(image_path, exclude_center_px=goal_px, exclude_radius_px=GOAL_MARKER_EXCLUDE_PX)
+
+        clear_ok, violations = verify_clearance_deterministic(
+            image_path, coords, robot_pos, scale, min_clearance_m=min_clearance_m, min_wall_dist_m=min_wall_dist_m
+        )
+        STUCK_EPS = 0.02  # 이동량이 이보다 작으면 "더 옮겨도 개선 안 됨"(병목 구간)으로 판단
+        if not clear_ok:
+            for v in violations:
+                idx = v['idx']
+                if 0 < idx < len(coords) - 1:
+                    cur_x, cur_y = coords[idx]['x'], coords[idx]['y']
+                    moved = ((v['suggested_x'] - cur_x) ** 2 + (v['suggested_y'] - cur_y) ** 2) ** 0.5
+                    if moved < STUCK_EPS:
+                        # 병목 구간: 더 중앙으로 옮겨도 near_wall_m이 개선되지 않음.
+                        # clearance_m(하드 기준, 0.8m) 자체가 충족되면 그대로 수용하고 넘어감 --
+                        # near_wall_m 편향 체크는 이 하드 기준 위에 얹은 보조 선호일 뿐이라
+                        # 물리적으로 불가능한 완전 중앙정렬을 무한 시도하지 않음.
+                        log.append(f"[iter {it}] idx {idx}: 병목 구간(이동해도 개선 안 됨) -> clearance_m 하드 기준만 확인 후 수용")
+                        continue
+                    coords[idx]['x'] = v['suggested_x']
+                    coords[idx]['y'] = v['suggested_y']
+                    log.append(f"[iter {it}] idx {idx}: clearance/near_wall 위반 -> ({v['suggested_x']},{v['suggested_y']})로 이동")
+                    changed = True
+            if changed:
+                continue
+
+        step_violations = check_step_lengths_deterministic(coords, min_step_m, max_step_m)
+        if step_violations:
+            i, j, d, kind = step_violations[0]
+            points_px = [to_px(c) for c in coords]
+            if kind == "too_long":
+                cand = _find_safe_bend_point(points_px[i], points_px[j], red_mask, scale,
+                                              min_clearance_m=min_clearance_m)
+                if cand is not None:
+                    cwx, cwy = (cand[0] - rx) / scale, (ry - cand[1]) / scale
+                    coords.insert(j, {"x": round(cwx, 2), "y": round(cwy, 2)})
+                    log.append(f"[iter {it}] segment ({i},{j}) 보폭 초과({d}m) -> 안전한 굴절점 삽입")
+                    changed = True
+                else:
+                    log.append(f"[iter {it}] segment ({i},{j}) 보폭 초과({d}m) -> 안전한 굴절점 못 찾음")
+            else:
+                if j < len(coords) - 1 and 0 < j:
+                    tail = points_px[j + 1] if j + 1 < len(points_px) else points_px[j]
+                    if _segment_is_clear(points_px[i], tail, red_mask):
+                        coords.pop(j)
+                        log.append(f"[iter {it}] segment ({i},{j}) 보폭 미달({d}m) -> idx {j} 제거")
+                        changed = True
+                if not changed and 0 < i:
+                    head = points_px[i - 1]
+                    if _segment_is_clear(head, points_px[j], red_mask):
+                        coords.pop(i)
+                        log.append(f"[iter {it}] segment ({i},{j}) 보폭 미달({d}m) -> idx {i} 제거")
+                        changed = True
+                if not changed:
+                    log.append(f"[iter {it}] segment ({i},{j}) 보폭 미달({d}m) -> 제거 불가, 보류")
+            if changed:
+                continue
+
+        seg_ok, bad_segments = verify_segments_deterministic(image_path, coords, robot_pos, scale)
+        if not seg_ok:
+            i, j = bad_segments[0]
+            points_px = [to_px(c) for c in coords]
+            cand = _find_safe_bend_point(points_px[i], points_px[j], red_mask, scale,
+                                          min_clearance_m=min_clearance_m)
+            if cand is not None:
+                cwx, cwy = (cand[0] - rx) / scale, (ry - cand[1]) / scale
+                coords.insert(j, {"x": round(cwx, 2), "y": round(cwy, 2)})
+                log.append(f"[iter {it}] segment ({i},{j}) 벽 관통 -> 안전한 굴절점 삽입")
+                changed = True
+            else:
+                log.append(f"[iter {it}] segment ({i},{j}) 벽 관통 -> 안전한 굴절점 못 찾음")
+
+        if not changed:
+            # 최종 판정은 near_wall_m(보조 선호)이 아니라 clearance_m(하드 기준, 0.8m)만으로 확인.
+            # 병목 구간에서 near_wall_m이 여전히 낮아도, 통로 폭 자체가 안전하면 통과로 인정.
+            _, hard_violations = verify_clearance_deterministic(image_path, coords, robot_pos, scale,
+                                                                  min_clearance_m, min_wall_dist_m=0.0)
+            final_clear_ok = len(hard_violations) == 0
+            final_seg_ok, _ = verify_segments_deterministic(image_path, coords, robot_pos, scale)
+            final_step_violations = check_step_lengths_deterministic(coords, min_step_m, max_step_m)
+            passed = final_clear_ok and final_seg_ok and not final_step_violations
+            log.append(f"[iter {it}] 수렴. passed={passed}")
+            return coords, passed, log
+
+    log.append(f"max_iters({max_iters}) 초과 -- 미수렴")
+    return coords, False, log
+
+
 class VLMCourt:
     def __init__(self, backend: str = "gemini", ollama_model: str = None,
                  gemini_model: str = None, openai_model: str = None):
@@ -335,7 +502,9 @@ class VLMCourt:
             m = re.search(r'COLLISION:\s*(YES|NO)', verify_msg.content, re.IGNORECASE)
             line_collision = (m.group(1).upper() == "YES") if m else True  # 파싱 실패시 보수적으로 충돌 간주
             # 5.5 결정론적 clearance 재검증 (VLM 눈대중 아님, Neural A*와 동일한 ray-casting)
-            clear_ok, violations = verify_clearance_deterministic(image_path, final_coords, robot_pos, scale)
+            clear_ok, violations = verify_clearance_deterministic(
+                image_path, final_coords, robot_pos, scale, min_wall_dist_m=RECHECK_WALL_DIST_M
+            )
             det_report = ""
             if not clear_ok:
                 det_report = (

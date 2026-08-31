@@ -32,6 +32,9 @@ MIN_STEP_M = 0.4
 MAX_STEP_M = 1.0
 MIN_WALL_DIST_M = 0.4    # 2026-08-31: 통로 전체 폭(clearance_m)과 별개로,
                          # 한쪽 벽에 치우쳐 지나가는 걸 막는 최소 편측 이격거리 기준.
+CORRECTION_MAX_SHIFT_M = 0.3  # 2026-08-31: 중앙 정렬 보정 시 이동량 상한. 이게 없으면 한쪽
+                         # 벽이 아주 멀 때(반대쪽이 열린 공간) shift가 무한정 커져서 원래
+                         # 위치에서 엉뚱하게 먼 곳으로 waypoint가 튀는 문제가 있었음 (실측 확인).
 
 def full_to_grid(px, py, w, h): return px * GRID / w, py * GRID / h
 def grid_to_full(gx, gy, w, h): return gx * w / GRID, gy * h / GRID
@@ -174,7 +177,8 @@ def measure_corridor_width_m(points, idx, red_mask, ppm):
     near_m = round(min(d_pos, d_neg) / ppm, 2)   # 가까운 쪽 벽까지 거리 (편향 감지 + 설명용)
     far_m = round(max(d_pos, d_neg) / ppm, 2)    # 먼 쪽 벽까지 거리 (좌/우 라벨 없이 크기만)
 
-    shift_px = (d_pos - d_neg) / 2.0
+    cap_px = CORRECTION_MAX_SHIFT_M * ppm
+    shift_px = max(-cap_px, min(cap_px, (d_pos - d_neg) / 2.0))
     center_x = x0 + perp_x * shift_px
     center_y = y0 + perp_y * shift_px
     return width_m, center_x, center_y, near_m, far_m

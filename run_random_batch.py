@@ -115,7 +115,7 @@ def main():
 
         for i in range(args.n_scenes):
             seed = args.start_seed + i
-            scene = f"oracle_scene_R{i:03d}"
+            scene = f"oracle_scene_R{seed:03d}"
             if scene in done:
                 print(f"[{scene}] 이미 완료, 스킵"); continue
 
@@ -148,7 +148,7 @@ def main():
             scenario = (f"로봇(go2)은 (0,0)에서 시작해서 ({goal_x:.1f},{goal_y:.1f})까지 이동해야 해. "
                         f"이미 계산된 경로를 검토해줘.")
             judge_msg, coords = court.run_case(
-                scenario, image_path=overlay_path, robot_pos=ROBOT_PX, scale=PPM,
+                scenario, image_path=f"data/{scene}/oracle.png", robot_pos=ROBOT_PX, scale=PPM,
                 scene_name=scene, coordinate_proposal=coordinate_proposal, variant=VARIANT
             )
             if judge_msg is None or judge_msg.content.strip().startswith("Error generating response"):
