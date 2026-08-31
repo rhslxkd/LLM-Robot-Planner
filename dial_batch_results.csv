@@ -1,0 +1,10 @@
+scene,result,fall_step,final_or_fall_z,final_or_fall_R22,reason
+oracle_scene_R002,OK,,0.285,0.999,
+oracle_scene_R003,FALL,338,0.178,0.982,height
+oracle_scene_R004,FALL,124,0.177,0.945,height
+oracle_scene_R006,FALL,157,0.179,0.98,height
+oracle_scene_R008,OK,,0.278,0.998,
+oracle_scene_R009,FALL,294,0.167,0.968,height
+oracle_scene_R010,NO_STATES,,,,
+oracle_scene_R011,FALL,181,0.178,0.973,height
+oracle_scene_R015,OK,,0.283,0.999,

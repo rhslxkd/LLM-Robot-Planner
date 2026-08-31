@@ -222,6 +222,12 @@ def main():
              "last_judged_path.json 경로를 씬/백엔드 조합별로 지정할 때 사용 "
              "(예: data/oracle_scene_A/gemini/last_judged_path.json).",
     )
+    parser.add_argument(
+        "--n-steps",
+        type=int,
+        default=None,
+        help="YAML의 n_steps(시뮬레이션 스텝 수)를 덮어쓴다. 지정하지 않으면 YAML 값을 그대로 사용.",
+    )
     args = parser.parse_args()
     
     if args.example is None and args.config is None:
@@ -251,6 +257,8 @@ def main():
     if args.output_dir is not None:
         dial_config.output_dir = args.output_dir
     dial_config.output_dir = resolve_output_dir(dial_config.output_dir)
+    if args.n_steps is not None:
+        dial_config.n_steps = args.n_steps
     rng = jax.random.PRNGKey(seed=dial_config.seed)
 
     # find env config

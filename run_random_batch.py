@@ -20,7 +20,7 @@ VARIANT = "batch"  # courtroom 산출물이 저장되는 data/<scene>/<VARIANT>/
 YAML_TEMPLATE = """# DIAL-MPC (auto-generated)
 seed: 0
 output_dir: data/{scene}
-n_steps: 400
+n_steps: {n_steps}
 env_name: unitree_go2_walk
 Nsample: 2048
 Hsample: 16
@@ -97,6 +97,8 @@ def main():
     parser.add_argument("--run-dial", action="store_true",
                          help="지정하면 courtroom 통과 후 DIAL-MPC까지 실행. 기본은 미실행"
                               " (courtroom까지만 파일럿 검증).")
+    parser.add_argument("--n-steps", type=int, default=400,
+                         help="생성되는 YAML의 n_steps(DIAL-MPC 시뮬레이션 스텝 수). 기본 400.")
     args = parser.parse_args()
 
     manifest_path = "data/random_batch_manifest.csv"
@@ -127,7 +129,7 @@ def main():
             with open(f"dial_mpc/dial_mpc/models/unitree_go2/{scene}.xml", "w") as f:
                 f.write(xml)
             with open(f"dial_mpc/dial_mpc/examples/{scene}.yaml", "w") as f:
-                f.write(YAML_TEMPLATE.format(scene=scene))
+                f.write(YAML_TEMPLATE.format(scene=scene, n_steps=args.n_steps))
             print(f"  미로 생성 완료 goal=({goal_x:.2f},{goal_y:.2f}) n_baffles={meta['n_baffles']}")
 
             env = {**os.environ, "MUJOCO_GL": "egl"}

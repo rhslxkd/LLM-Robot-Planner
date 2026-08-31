@@ -1,0 +1,51 @@
+/home/user/miniconda3/envs/vlm_court/lib/python3.10/site-packages/jax_cosmo/__init__.py:2: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import DistributionNotFound
+Failed to import warp: No module named 'warp'
+Failed to import mujoco_warp: No module named 'warp'
+ _              _____            _____               _____  __  __  _    _ 
+| |            / ____|    /\    |  __ \     ____    / ____||  \/  || |  | |
+| |       ___ | |        /  \   | |__) |   / __ \  | |     | \  / || |  | |
+| |      / _ \| |       / /\ \  |  _  /   / / _` | | |     | |\/| || |  | |
+| |____ |  __/| |____  / ____ \ | | \ \  | | (_| | | |____ | |  | || |__| |
+|______| \___| \_____|/_/    \_\|_|  \_\  \ \__,_|  \_____||_|  |_| \____/ 
+                                           \____/                          
+                                                                           
+ _____   _____            _               __  __  _____    _____ 
+|  __ \ |_   _|    /\    | |             |  \/  ||  __ \  / ____|
+| |  | |  | |     /  \   | |      ______ | \  / || |__) || |     
+| |  | |  | |    / /\ \  | |     |______|| |\/| ||  ___/ | |     
+| |__| | _| |_  / ____ \ | |____         | |  | || |     | |____ 
+|_____/ |_____|/_/    \_\|______|        |_|  |_||_|      \_____|
+                                                                 
+                                                                 
+
+🚀Creating environment
+/home/user/miniconda3/envs/vlm_court/lib/python3.10/site-packages/brax/io/mjcf.py:480: UserWarning: Brax System, piplines and environments are not actively being maintained. Please see MJX for a well maintained JAX-based physics engine: https://github.com/google-deepmind/mujoco/tree/main/mjx. For a host of environments that use MJX, see: https://github.com/google-deepmind/mujoco_playground.
+  warnings.warn(
+[VLM Path] ✅ Loaded 0 waypoints from: /home/user/hyeonsoo/LLM-Robot-Planner/data/oracle_scene_R010/batch/last_judged_path.json
+[0.6560999  0.7289999  0.80999994 0.9        1.        ]
+2026-08-31 23:40:49.957367: W external/xla/xla/service/gpu/autotuning/dot_search_space.cc:200] All configs were filtered out because none of them sufficiently match the hints. Maybe the hints set does not contain a good representative set of valid configs?Working around this by using the full hints set instead.
+2026-08-31 23:40:49.957401: W external/xla/xla/service/gpu/autotuning/dot_search_space.cc:200] All configs were filtered out because none of them sufficiently match the hints. Maybe the hints set does not contain a good representative set of valid configs?Working around this by using the full hints set instead.
+Rollout:   0%|          | 0/1000 [00:00<?, ?it/s]Rollout:   0%|          | 0/1000 [00:00<?, ?it/s]
+jax.errors.SimplifiedTraceback: For simplicity, JAX has removed its internal frames from the traceback of the following exception. Set JAX_TRACEBACK_FILTERING=off to include these.
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/user/hyeonsoo/LLM-Robot-Planner/dial_mpc/dial_mpc/core/dial_core.py", line 390, in <module>
+    main()
+  File "/home/user/hyeonsoo/LLM-Robot-Planner/dial_mpc/dial_mpc/core/dial_core.py", line 298, in main
+    state = step_env(state, Y0[0])
+  File "/home/user/hyeonsoo/LLM-Robot-Planner/dial_mpc/dial_mpc/envs/unitree_go2_env.py", line 178, in step
+    seg_lengths = jnp.linalg.norm(jnp.diff(path[:, :2], axis=0), axis=1)  # (num_points-1,)
+  File "/home/user/miniconda3/envs/vlm_court/lib/python3.10/site-packages/jax/_src/array.py", line 382, in __getitem__
+    return indexing.rewriting_take(self, idx)
+  File "/home/user/miniconda3/envs/vlm_court/lib/python3.10/site-packages/jax/_src/numpy/indexing.py", line 653, in rewriting_take
+    return internal_gather(arr, dynamic_idx)
+  File "/home/user/miniconda3/envs/vlm_court/lib/python3.10/site-packages/jax/_src/numpy/indexing.py", line 662, in _gather
+    indexer = index_to_gather(np.shape(arr), idx)  # shared with _scatter_update
+  File "/home/user/miniconda3/envs/vlm_court/lib/python3.10/site-packages/jax/_src/numpy/indexing.py", line 799, in index_to_gather
+    idx = _canonicalize_tuple_index(len(x_shape), idx)
+  File "/home/user/miniconda3/envs/vlm_court/lib/python3.10/site-packages/jax/_src/numpy/indexing.py", line 1118, in _canonicalize_tuple_index
+    raise IndexError(
+IndexError: Too many indices: 1-dimensional array indexed with 2 regular indices.
