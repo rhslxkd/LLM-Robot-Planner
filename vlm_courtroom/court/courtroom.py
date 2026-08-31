@@ -10,6 +10,8 @@ MAX_VERIFY_RETRIES = 3  # Prosecutor->Judge->시각화->Verifier 루프 최대 �
 MIN_CLEARANCE_M = 0.8   # ROBOT_PHYSICAL_CONSTRAINTS와 동일한 임계값. 2026-08-28 0.6->0.8 상향:
                          # oracle_scene_R001 실측 DIAL-MPC에서 clearance_m 0.63~0.98m 구간(구
                          # 기준으로는 통과)에서 로봇이 급회전 중 실제로 넘어지는 것을 확인함.
+MIN_WALL_DIST_M = 0.4   # 2026-08-31: 통로 전체 폭(clearance_m)과 별개로, 한쪽 벽에
+                         # 치우쳐 지나가는 걸 막는 최소 편측 이격거리 기준.
 GOAL_MARKER_EXCLUDE_PX = 20  # goal 마커 오탐 방지용 제외 반경 (실측: goal 근처에 순수
                               # (255,0,0) 클러스터가 있고 이는 실제 벽 렌더링 색과 다름)
 
@@ -61,13 +63,16 @@ def _perp_dir(points_px, idx):
     return -ty / n, tx / n
 
 
-def verify_clearance_deterministic(image_path, coordinates, robot_pos, scale, min_clearance_m=MIN_CLEARANCE_M):
+def verify_clearance_deterministic(image_path, coordinates, robot_pos, scale,
+                                    min_clearance_m=MIN_CLEARANCE_M, min_wall_dist_m=MIN_WALL_DIST_M):
     """Judge가 확정한 최종 좌표를 실제 이미지 픽셀 기준으로 재검증. VLM이 눈대중으로
     거리를 추정하게 하지 않고, Neural A* 단계와 동일한 ray-casting을 그대로 재실행해서
-    각 waypoint의 실제 clearance_m을 다시 계산한다 (Prosecutor가 수정 제안한 좌표는
-    원래의 clearance_m 라벨이 더 이상 정확하지 않을 수 있으므로 반드시 재계산 필요).
+    각 waypoint의 실제 clearance_m을 다시 계산한다. 2026-08-31: 통로 전체 폭(width_m)뿐
+    아니라 한쪽 벽까지의 최소거리(min(d1,d2))도 확인 -- 통로가 넓어도 한쪽에 치우쳐
+    지나가는 경우를 잡는다. 위반 시 중앙 정렬 suggested_x/y + 참고용 near/far 거리를 반환.
     마지막 waypoint(goal)는 goal 마커 오탐을 피하기 위해 red_mask에서 그 주변을 제외한다.
-    반환: (모두 통과했는가: bool, [(waypoint_idx, 실제_clearance_m), ...] 위반 목록)"""
+    반환: (모두 통과했는가: bool, [{"idx","width_m","near_wall_m","far_wall_m",
+                                    "suggested_x","suggested_y"}, ...])"""
     if not robot_pos or not scale or not coordinates:
         return True, []
     rx, ry = robot_pos
@@ -82,8 +87,18 @@ def verify_clearance_deterministic(image_path, coordinates, robot_pos, scale, mi
         d1 = _cast_ray(px, py, perp_x, perp_y, red_mask)
         d2 = _cast_ray(px, py, -perp_x, -perp_y, red_mask)
         width_m = (d1 + d2) / scale
-        if width_m < min_clearance_m:
-            violations.append((idx, round(width_m, 2)))
+        min_side_m = min(d1, d2) / scale
+        if width_m < min_clearance_m or min_side_m < min_wall_dist_m:
+            shift_px = (d1 - d2) / 2.0
+            cand_x, cand_y = px + perp_x * shift_px, py + perp_y * shift_px
+            violations.append({
+                "idx": idx,
+                "width_m": round(width_m, 2),
+                "near_wall_m": round(min(d1, d2) / scale, 2),
+                "far_wall_m": round(max(d1, d2) / scale, 2),
+                "suggested_x": round((cand_x - rx) / scale, 2),
+                "suggested_y": round((ry - cand_y) / scale, 2),
+            })
     return (len(violations) == 0), violations
 
 
@@ -319,12 +334,15 @@ class VLMCourt:
             transcript_sections.append((f"Verifier (attempt {attempt})", verify_msg.content))
             m = re.search(r'COLLISION:\s*(YES|NO)', verify_msg.content, re.IGNORECASE)
             line_collision = (m.group(1).upper() == "YES") if m else True  # 파싱 실패시 보수적으로 충돌 간주
-
             # 5.5 결정론적 clearance 재검증 (VLM 눈대중 아님, Neural A*와 동일한 ray-casting)
             clear_ok, violations = verify_clearance_deterministic(image_path, final_coords, robot_pos, scale)
             det_report = ""
             if not clear_ok:
-                det_report = f"[결정론적 재검증] 다음 waypoint는 실제 계산 결과 clearance_m < {MIN_CLEARANCE_M}m 입니다: {violations}"
+                det_report = (
+                f"[결정론적 재검증] 다음 waypoint는 안전기준 위반입니다 (통로 폭 < {MIN_CLEARANCE_M}m "
+                f"또는 한쪽 벽까지 거리 < {MIN_WALL_DIST_M}m). 방향/거리를 추측하지 말고 "
+                f"suggested_x/suggested_y를 그대로 채택하세요: {violations}"
+            )
                 print(f"📐 {det_report}\n")
                 transcript_sections.append((f"Deterministic clearance check (attempt {attempt})", det_report))
 
@@ -348,7 +366,11 @@ class VLMCourt:
             # 5.7 Judge 자신의 판결도 확인
             judge_rejected = bool(re.search(r'\b(REJECTED|STRUCTURALLY_INFEASIBLE)\b', judge_msg.content, re.IGNORECASE))
 
-            collision = line_collision or (not clear_ok) or (not seg_ok) or judge_rejected
+            # 2026-08-31: line_collision(VLM 시각판단) 단독으로는 재시도를 강제하지 않음.
+            # 이 환경은 장애물이 전부 red_mask 기반이라 Verifier가 ray-casting보다 더 많은
+            # 정보를 가질 수 없음 -- R001 실측에서 clearance_m=2.99m인 지점을 line_collision=True로
+            # 오탐하여 Prosecutor가 멀쩡한 waypoint를 삭제하는 부작용 확인.
+            collision = (not clear_ok) or (not seg_ok) or judge_rejected
             if not collision:
                 print(f"✅ Attempt {attempt}: 시각+결정론적 검증+Judge 판결 모두 통과")
                 verified_clear = True
@@ -359,8 +381,8 @@ class VLMCourt:
                 feedback_parts = []
                 if not seg_ok:
                     feedback_parts.append(seg_report)
-                elif line_collision:
-                    feedback_parts.append(verify_msg.content)
+                # elif line_collision:  # 2026-08-31: line_collision은 이제 판정에 안 쓰므로 피드백에서도 제외 (Verifier는 로깅 전용)
+                #     feedback_parts.append(verify_msg.content)
                 if not clear_ok:
                     feedback_parts.append(det_report)
                 if judge_rejected:

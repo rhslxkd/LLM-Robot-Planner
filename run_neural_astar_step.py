@@ -30,6 +30,8 @@ WALL_DILATE_PX = 3        # line-of-sight 충돌체크용 마스크 팽창 폭(p
                            # 쓰지 않음(원본 red_mask로 정확한 값 유지).
 MIN_STEP_M = 0.4
 MAX_STEP_M = 1.0
+MIN_WALL_DIST_M = 0.4    # 2026-08-31: 통로 전체 폭(clearance_m)과 별개로,
+                         # 한쪽 벽에 치우쳐 지나가는 걸 막는 최소 편측 이격거리 기준.
 
 def full_to_grid(px, py, w, h): return px * GRID / w, py * GRID / h
 def grid_to_full(gx, gy, w, h): return gx * w / GRID, gy * h / GRID
@@ -139,6 +141,9 @@ def path_length_m(points, ppm):
 # ---------- Stage 4: 각 점의 실제 통로 폭(clearance_m) - perpendicular ray-casting ----------
 
 def measure_corridor_width_m(points, idx, red_mask, ppm):
+    """clearance_m 계산 + (0.8m 미만일 때) 통로 중앙으로 정렬한 좌표까지 함께 반환.
+    2026-08-29: Prosecutor가 attempt 1부터 정확한 교정 좌표를 받도록, courtroom.py의
+    compute_correction_suggestions()와 동일한 계산을 Neural A* 직후에 선제적으로 수행."""
     h, w = red_mask.shape
     if idx == 0:
         tx, ty = points[1][0]-points[0][0], points[1][1]-points[0][1]
@@ -148,7 +153,7 @@ def measure_corridor_width_m(points, idx, red_mask, ppm):
         tx, ty = points[idx+1][0]-points[idx-1][0], points[idx+1][1]-points[idx-1][1]
     norm = (tx**2 + ty**2) ** 0.5
     if norm < 1e-6:
-        return 99.0
+        return 99.0, points[idx][0], points[idx][1]
     perp_x, perp_y = -ty/norm, tx/norm  # 경로 진행방향에 수직인 단위벡터
     x0, y0 = points[idx]
     max_range = max(h, w)
@@ -162,9 +167,17 @@ def measure_corridor_width_m(points, idx, red_mask, ppm):
                 return r
         return max_range
 
-    width_px = cast(perp_x, perp_y) + cast(-perp_x, -perp_y)
-    width_m = width_px / ppm
-    return 99.0 if width_m > 8.0 else round(width_m, 2)  # 너무 넓으면 "개방구역"으로 표기
+    d_pos = cast(perp_x, perp_y)
+    d_neg = cast(-perp_x, -perp_y)
+    width_m = (d_pos + d_neg) / ppm
+    width_m = 99.0 if width_m > 8.0 else round(width_m, 2)  # 너무 넓으면 "개방구역"으로 표기
+    near_m = round(min(d_pos, d_neg) / ppm, 2)   # 가까운 쪽 벽까지 거리 (편향 감지 + 설명용)
+    far_m = round(max(d_pos, d_neg) / ppm, 2)    # 먼 쪽 벽까지 거리 (좌/우 라벨 없이 크기만)
+
+    shift_px = (d_pos - d_neg) / 2.0
+    center_x = x0 + perp_x * shift_px
+    center_y = y0 + perp_y * shift_px
+    return width_m, center_x, center_y, near_m, far_m
 
 def main():
     parser = argparse.ArgumentParser()
@@ -260,8 +273,15 @@ def main():
     coordinates = []
     for idx, (px, py) in enumerate(wp_final):
         wx, wy = full_to_world(px, py)
-        clearance = measure_corridor_width_m(wp_final, idx, red_mask, PPM)
-        coordinates.append({"x": round(wx, 2), "y": round(wy, 2), "clearance_m": clearance})
+        clearance, cx_px, cy_px, near_m, far_m = measure_corridor_width_m(wp_final, idx, red_mask, PPM)
+        entry = {"x": round(wx, 2), "y": round(wy, 2), "clearance_m": clearance}
+        if clearance < 0.8 or near_m < MIN_WALL_DIST_M:
+            cwx, cwy = full_to_world(cx_px, cy_px)
+            entry["suggested_x"] = round(cwx, 2)
+            entry["suggested_y"] = round(cwy, 2)
+            entry["near_wall_m"] = near_m
+            entry["far_wall_m"] = far_m
+        coordinates.append(entry)
 
     with open(os.path.join(out_dir, "coordinate_proposal.json"), "w") as f:
         _json.dump(coordinates, f, indent=2)

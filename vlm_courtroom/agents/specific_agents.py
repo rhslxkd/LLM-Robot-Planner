@@ -215,18 +215,27 @@ class ProsecutorAgent(VLMAgent):
         {ROBOT_PHYSICAL_CONSTRAINTS}
         {retry_block}
         Your job:
-        1. Check every waypoint's "clearance_m" (>= 0.8m required) and, if present,
-           "dist_to_wall_m" (distance to the NEAREST wall -- a small value relative
-           to clearance_m means the waypoint sits close to one side of the corridor
-           even though the corridor itself has more total room).
-        2. If you find a waypoint that is unsafe or poorly positioned (hugging a
-           wall), you are AUTHORIZED to propose a corrected (x, y) for that
-           waypoint directly -- do not just flag the problem, fix it. Reason from
-           the given numeric data and neighboring waypoints' coordinates: if a
-           point sits close to one wall, move it toward the corridor's estimated
-           center, roughly perpendicular to the local path direction. Keep any
-           correction small and local (do not redesign the whole path) and keep
-           it consistent with neighboring waypoints (no large jumps).
+        1. Check every waypoint's "clearance_m" (>= 0.8m required). If a waypoint
+           already includes "suggested_x"/"suggested_y" fields in the input data,
+           that means it violates the safety margin (either total corridor width
+           OR is biased too close to one side) and a deterministically ray-cast
+           -computed safe alternative (the corridor's true center at that point)
+           is already provided -- ADOPT THAT EXACT VALUE for this waypoint. Do not
+           compute your own direction/magnitude for it; your own visual guess is
+           not more accurate than the ray-casting that produced this number.
+           If "near_wall_m"/"far_wall_m" are also present, they tell you how close
+           this waypoint currently is to the nearest wall on each side of the path
+           -- use them ONLY to explain WHY the correction is needed in your
+           reasoning text (e.g., "this point sits only {{near_wall_m}}m from one
+           wall while the other side has {{far_wall_m}}m free"). Do not use them to
+           compute your own alternative coordinate; suggested_x/suggested_y is
+           already that computation.
+        2. For any OTHER waypoint that still looks unsafe or poorly positioned
+           and does NOT have a suggested_x/suggested_y given, you are AUTHORIZED
+           to propose a corrected (x, y) yourself -- reason from the given numeric
+           data and neighboring waypoints' coordinates, move it toward the
+           corridor's estimated center, keep corrections small/local and
+           consistent with neighboring waypoints (no large jumps).
         3. If a segment is fundamentally impassable (clearance_m < 0.8m across a
            wide stretch with no viable local fix), say so clearly.
 
