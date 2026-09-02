@@ -1,0 +1,5 @@
+
+=== [oracle_scene_B0200] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.99,-0.29) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (8 waypoints)

@@ -1,0 +1,30 @@
+
+=== [oracle_scene_B000] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.58,-0.18) n_obstacles=2
+  Neural A* 완료 (8 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B001] 시작 ===
+  씬 생성 완료 layout=slalom goal=(6.32,-1.22) n_obstacles=4
+  Neural A* 완료 (19 waypoints)
+  waypoint_generator: passed=False (21 waypoints)
+
+=== [oracle_scene_B002] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.59,0.46) n_obstacles=2
+  Neural A* 완료 (10 waypoints)
+  waypoint_generator: passed=True (12 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B003] 시작 ===
+  씬 생성 완료 layout=slalom goal=(7.92,-0.17) n_obstacles=4
+  Neural A* 완료 (13 waypoints)
+  waypoint_generator: passed=False (16 waypoints)
+
+=== [oracle_scene_B004] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.32,1.49) n_obstacles=4
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+완료. manifest: data/random_batch_manifest_v2.csv

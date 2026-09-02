@@ -1,0 +1,24 @@
+
+=== [oracle_scene_B0100] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.12,0.82) n_obstacles=4
+  ⚠️ neural-astar 실패 (returncode=1) -- 전체 로그: data/oracle_scene_B0100/neural_astar/na_stdout.log
+
+=== [oracle_scene_B0101] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.72,-1.22) n_obstacles=4
+  ⚠️ neural-astar 실패 (returncode=1) -- 전체 로그: data/oracle_scene_B0101/neural_astar/na_stdout.log
+
+=== [oracle_scene_B0102] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.78,-0.46) n_obstacles=4
+  ⚠️ neural-astar 실패 (returncode=1) -- 전체 로그: data/oracle_scene_B0102/neural_astar/na_stdout.log
+
+=== [oracle_scene_B0103] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.56,-0.17) n_obstacles=4
+  ⚠️ neural-astar 실패 (returncode=1) -- 전체 로그: data/oracle_scene_B0103/neural_astar/na_stdout.log
+
+=== [oracle_scene_B0104] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.32,1.49) n_obstacles=4
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+완료. manifest: data/random_batch_manifest_v2.csv
