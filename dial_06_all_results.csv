@@ -1,0 +1,14 @@
+scene,result,fall_step,z,reason
+oracle_scene_R000,OK,,0.286,
+oracle_scene_R001,OK,,0.283,
+oracle_scene_R002,OK,,0.291,
+oracle_scene_R003,OK,,0.296,
+oracle_scene_R004,FALL,383,0.178,height
+oracle_scene_R006,OK,,0.298,
+oracle_scene_R008,OK,,0.304,
+oracle_scene_R009,OK,,0.294,
+oracle_scene_R010,OK,,0.264,
+oracle_scene_R011,OK,,0.293,
+oracle_scene_R012,FALL,525,0.179,height
+oracle_scene_R013,FALL,193,0.159,height
+oracle_scene_R015,OK,,0.292,
