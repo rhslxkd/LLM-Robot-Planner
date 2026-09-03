@@ -3,3 +3,583 @@
   씬 생성 완료 layout=slalom goal=(3.99,-0.29) n_obstacles=3
   Neural A* 완료 (6 waypoints)
   waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0201] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.08,0.16) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0202] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.95,0.58) n_obstacles=6
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0203] 시작 ===
+  씬 생성 완료 layout=boxes goal=(2.67,1.37) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0204] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.25,-1.66) n_obstacles=4
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=False (6 waypoints)
+
+=== [oracle_scene_B0205] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.33,0.90) n_obstacles=4
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0206] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.90,1.37) n_obstacles=4
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0207] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.46,0.68) n_obstacles=4
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0208] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.03,1.12) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0209] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.67,-0.38) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0210] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.31,0.14) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0211] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.69,0.19) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0212] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.25,1.93) n_obstacles=5
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0213] 시작 ===
+  씬 생성 완료 layout=boxes goal=(2.79,-1.12) n_obstacles=3
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=False (7 waypoints)
+
+=== [oracle_scene_B0214] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.59,-0.12) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0215] 시작 ===
+  씬 생성 완료 layout=boxes goal=(2.58,1.68) n_obstacles=5
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0216] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.30,0.11) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0217] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.52,-0.21) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0218] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.13,-0.31) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0219] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.97,-0.13) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0220] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.07,-0.21) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0221] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.02,-0.33) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0222] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.98,-1.06) n_obstacles=5
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=False (8 waypoints)
+
+=== [oracle_scene_B0223] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.20,-0.05) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0224] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.26,0.11) n_obstacles=3
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0225] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.97,-0.21) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0226] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.52,0.29) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0227] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.26,1.26) n_obstacles=5
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0228] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.25,0.78) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0229] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.61,-0.22) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0230] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.98,-0.16) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0231] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.29,0.37) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0232] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.03,-1.07) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0233] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.93,0.10) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0234] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.15,1.46) n_obstacles=5
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0235] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.23,0.01) n_obstacles=2
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0236] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.91,-0.00) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0237] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.68,1.62) n_obstacles=3
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0238] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.17,-0.33) n_obstacles=2
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0239] 시작 ===
+  씬 생성 완료 layout=boxes goal=(2.73,1.31) n_obstacles=4
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=False (6 waypoints)
+
+=== [oracle_scene_B0240] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.14,-1.77) n_obstacles=5
+  Neural A* 완료 (10 waypoints)
+  waypoint_generator: passed=False (9 waypoints)
+
+=== [oracle_scene_B0241] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.95,0.20) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0242] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.20,-0.00) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0243] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.55,0.02) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0244] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.30,1.15) n_obstacles=7
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0245] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.36,1.24) n_obstacles=7
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=False (8 waypoints)
+
+=== [oracle_scene_B0246] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.26,0.07) n_obstacles=5
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=False (9 waypoints)
+
+=== [oracle_scene_B0247] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.37,-1.92) n_obstacles=6
+  Neural A* 완료 (10 waypoints)
+  waypoint_generator: passed=False (11 waypoints)
+
+=== [oracle_scene_B0248] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.09,0.90) n_obstacles=6
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0249] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.07,0.29) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0250] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.31,0.35) n_obstacles=2
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0251] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.43,-0.09) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0252] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.13,-0.39) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0253] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.63,-0.09) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0254] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.21,-1.00) n_obstacles=5
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0255] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.01,-1.82) n_obstacles=5
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0256] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.43,-0.27) n_obstacles=6
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=False (7 waypoints)
+
+=== [oracle_scene_B0257] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.17,-0.32) n_obstacles=2
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0258] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.74,-1.71) n_obstacles=5
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=False (8 waypoints)
+
+=== [oracle_scene_B0259] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.41,0.33) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0260] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.69,-0.01) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0261] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.41,0.40) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0262] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.16,0.03) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0263] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.06,0.26) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0264] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.68,0.69) n_obstacles=5
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0265] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.20,-0.02) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0266] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.53,0.03) n_obstacles=2
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0267] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.22,-0.32) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=False (6 waypoints)
+
+=== [oracle_scene_B0268] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.09,0.03) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0269] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.08,0.09) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0270] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.28,-0.11) n_obstacles=2
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0271] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.52,-0.12) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0272] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.56,-0.11) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0273] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.00,0.18) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0274] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.75,-1.14) n_obstacles=4
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=False (8 waypoints)
+
+=== [oracle_scene_B0275] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.10,0.26) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0276] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.28,-0.24) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0277] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.21,1.68) n_obstacles=4
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0278] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.40,-0.00) n_obstacles=2
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0279] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.28,1.15) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0280] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.09,0.62) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=False (6 waypoints)
+
+=== [oracle_scene_B0281] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.35,1.81) n_obstacles=4
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=False (7 waypoints)
+
+=== [oracle_scene_B0282] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.91,0.35) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=False (7 waypoints)
+
+=== [oracle_scene_B0283] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.88,-1.45) n_obstacles=5
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=False (8 waypoints)
+
+=== [oracle_scene_B0284] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.24,0.26) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0285] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.72,-0.09) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0286] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.43,-0.73) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0287] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.67,-0.15) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0288] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.46,-0.17) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0289] 시작 ===
+  씬 생성 완료 layout=boxes goal=(4.11,-0.91) n_obstacles=4
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0290] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.53,-0.65) n_obstacles=7
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=False (7 waypoints)
+
+=== [oracle_scene_B0291] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.88,0.19) n_obstacles=2
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0292] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.96,1.06) n_obstacles=4
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0293] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.41,-1.54) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0294] 시작 ===
+  씬 생성 완료 layout=boxes goal=(2.88,0.95) n_obstacles=6
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0295] 시작 ===
+  씬 생성 완료 layout=slalom goal=(4.31,-0.17) n_obstacles=3
+  Neural A* 완료 (9 waypoints)
+  waypoint_generator: passed=True (9 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0296] 시작 ===
+  씬 생성 완료 layout=boxes goal=(2.64,1.71) n_obstacles=3
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (5 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0297] 시작 ===
+  씬 생성 완료 layout=slalom goal=(3.60,0.20) n_obstacles=3
+  Neural A* 완료 (6 waypoints)
+  waypoint_generator: passed=True (7 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0298] 시작 ===
+  씬 생성 완료 layout=boxes goal=(2.84,-1.29) n_obstacles=6
+  Neural A* 완료 (5 waypoints)
+  waypoint_generator: passed=True (6 waypoints)
+  DIAL-MPC: 성공
+
+=== [oracle_scene_B0299] 시작 ===
+  씬 생성 완료 layout=boxes goal=(3.19,0.88) n_obstacles=3
+  Neural A* 완료 (7 waypoints)
+  waypoint_generator: passed=True (8 waypoints)
+  DIAL-MPC: 성공
+
+완료. manifest: data/random_batch_manifest_v2.csv
