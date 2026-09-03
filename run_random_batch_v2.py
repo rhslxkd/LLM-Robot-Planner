@@ -9,6 +9,10 @@ Neural A* 재학습용 데이터셋 목적). scene 접두사는 기존 R000~R015
 DIAL-MPC까지 돌리려면: python run_random_batch_v2.py --n-scenes 5 --start-seed 0 --run-dial
 """
 import os, sys, csv, time, subprocess, argparse, shutil, glob, json, random
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
 
 REPO = "/home/user/hyeonsoo/LLM-Robot-Planner"
 sys.path.insert(0, REPO)
@@ -78,6 +82,23 @@ def run_neural_astar_step(scene, goal_x, goal_y, timeout=120):
     return overlay_path, coordinate_proposal
 
 
+def save_verdict_png(scene, image_path, out_dir, final_coords, passed):
+    rx, ry = ROBOT_PX
+    xs = [rx + c["x"] * PPM for c in final_coords]
+    ys = [ry - c["y"] * PPM for c in final_coords]
+    img = mpimg.imread(image_path)
+    fig, ax = plt.subplots(figsize=(10, 10))
+    ax.imshow(img)
+    ax.plot(xs, ys, "r-", linewidth=2)
+    ax.scatter(xs, ys, c="yellow", s=50, zorder=5)
+    for i, (x, y) in enumerate(zip(xs, ys)):
+        ax.annotate(str(i), (x, y), color="white", fontsize=11, fontweight="bold")
+    ax.plot(rx, ry, "bo", markersize=10)
+    ax.set_title(f"{scene} -- PASSED: {passed}")
+    plt.savefig(os.path.join(out_dir, "verdict.png"))
+    plt.close()
+
+
 def run_dial_mpc(scene, n_steps, timeout=None):
     if timeout is None:
         timeout = int(n_steps * 0.5) + 120
@@ -101,9 +122,11 @@ def main():
     parser.add_argument("--n-steps", type=int, default=800)
     parser.add_argument("--box-prob", type=float, default=0.5)
     parser.add_argument("--run-dial", action="store_true")
+    parser.add_argument("--prefix", type=str, default="B")
+    parser.add_argument("--manifest", type=str, default="data/random_batch_manifest_v2.csv")
     args = parser.parse_args()
 
-    manifest_path = "data/random_batch_manifest_v2.csv"
+    manifest_path = args.manifest
     done = set()
     if os.path.exists(manifest_path):
         with open(manifest_path) as f:
@@ -120,7 +143,7 @@ def main():
 
         for i in range(args.n_scenes):
             seed = args.start_seed + i
-            scene = f"oracle_scene_B{seed:04d}"
+            scene = f"oracle_scene_{args.prefix}{seed:04d}"
             if scene in done:
                 print(f"[{scene}] 이미 완료, 스킵"); continue
 
@@ -169,6 +192,7 @@ def main():
             with open(f"{out_dir}/log.txt", "w") as f:
                 f.write(f"PASSED: {passed}\n\n")
                 f.write("\n".join(gen_log))
+            save_verdict_png(scene, image_path, out_dir, final_coords, passed)
 
             if not passed:
                 writer.writerow([scene, layout, goal_x, goal_y, n_obstacles, True, False, len(final_coords), "", time.time()-t0]); mf.flush()

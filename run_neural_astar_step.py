@@ -229,8 +229,9 @@ def main():
     from neural_astar.planner import NeuralAstar
     from neural_astar.utils.training import load_from_ptl_checkpoint
 
+    ckpt_path = os.environ.get("NEURAL_ASTAR_CKPT_OVERRIDE", CKPT_PATH)
     model = NeuralAstar(g_ratio=0.5, encoder_arch="CNN")
-    model.load_state_dict(load_from_ptl_checkpoint(CKPT_PATH))
+    model.load_state_dict(load_from_ptl_checkpoint(ckpt_path))
     model.eval()
 
     def dump_diagnostics():
