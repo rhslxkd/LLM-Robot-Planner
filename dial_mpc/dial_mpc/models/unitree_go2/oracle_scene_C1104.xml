@@ -1,0 +1,32 @@
+<mujoco model="go2 oracle scene oracle_scene_C1104 - random baffle slalom (seed=1104)">
+  <include file="mjx_go2_robot_only.xml"/>
+  <statistic center="0 0 0.1" extent="0.8"/>
+  <visual>
+    <map zfar="100"/>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="-130" elevation="-20" offwidth="1263" offheight="1080"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+      markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    <material name="wall_material" rgba="0.85 0.1 0.1 1" shininess="0.1" specular="0.5" roughness="0.3"/>
+  </asset>
+  <worldbody>
+    <light pos="0 0 5" dir="0 0 -1" directional="true" diffuse="1 1 1" ambient="0.4 0.4 0.4" specular="0.2 0.2 0.2"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+
+    <body name="outer_south" pos="1.517 -1.475 0.3"><geom type="box" size="2.017 0.075 0.3" material="wall_material"/></body>
+    <body name="outer_north" pos="1.517 1.475 0.3"><geom type="box" size="2.017 0.075 0.3" material="wall_material"/></body>
+    <body name="outer_west" pos="-0.575 0 0.3"><geom type="box" size="0.075 1.550 0.3" material="wall_material"/></body>
+    <body name="outer_east" pos="3.608 0 0.3"><geom type="box" size="0.075 1.550 0.3" material="wall_material"/></body>
+    <body name="baffle0" pos="1.015 -0.992 0.3">
+      <geom type="box" size="0.075 0.408 0.3" material="wall_material"/>
+    </body>
+    <body name="baffle1" pos="2.438 -0.962 0.3">
+      <geom type="box" size="0.075 0.438 0.3" material="wall_material"/>
+    </body>
+  </worldbody>
+</mujoco>

@@ -1,254 +1,238 @@
-# LLM-to-Robot Framework
+# LLM-Robot-Planner: Neural A* + Deterministic Safety Correction + DIAL-MPC
 
-> **뇌(VLM Courtroom) + 몸(DIAL-MPC)** — 학습 데이터 없이 언어 모델이 계획하고, 로봇이 실행하는 자율 항법 프레임워크
-
----
-
-## Overview
-
-HELM-Brain은 두 가지 핵심 모듈을 결합한 자율 로봇 항법 시스템입니다.
-
-- **Brain (VLM Courtroom)**: Vision-Language Model(VLM)이 카메라 이미지를 분석하고, 4개의 AI 에이전트가 법정 토론(Courtroom Debate) 방식으로 최적 경로를 합의 도출
-- **Body (DIAL-MPC)**: CMA-ES(Covariance Matrix Adaptation Evolution Strategy) 기반 Model Predictive Control로, **별도의 학습 데이터나 사전 훈련 없이** 로봇이 결정된 경로를 실행
-
-기존 로봇 항법 연구는 대규모 학습 데이터와 환경별 재훈련이 필요했습니다. 본 프로젝트는 이 두 가지 제약을 동시에 해결하며, 향후 **성격(Personality) 파라미터**를 통해 감정 기반 로봇 행동까지 확장 가능한 아키텍처를 설계했습니다.
+씬 이미지에서 로봇(Unitree Go2)이 안전하게 걸을 수 있는 경로를 생성하고, 실제 물리 시뮬레이션(DIAL-MPC)으로 검증하는 파이프라인입니다. VLM 기반 경로 판단 대신, **Neural A\*로 초기 경로를 제안하고 distance-field 기반 결정론적 알고리즘으로 안전 마진을 보정**하는 방식으로 전환했습니다 (VLM 환각 문제 회피, 재현 가능성 확보).
 
 ---
 
-## System Architecture
+## Pipeline Overview
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        INPUT                            │
-│              Camera Image + Task Description            │
-└─────────────────────┬───────────────────────────────────┘
-                      │
-┌─────────────────────▼───────────────────────────────────┐
-│                  🧠  BRAIN                               │
-│               VLM Courtroom                             │
-│                                                         │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │  [Step 1] CoordinateAgent                       │    │
-│  │   - VLM이 이미지 분석 → 장애물 인식             │    │
-│  │   - 로봇 물리 제약 준수 10개 경유점 초안 생성   │    │
-│  │   - ChromaDB에 경로 데이터 저장                 │    │
-│  └──────────────────────┬──────────────────────────┘    │
-│                         │                               │
-│  ┌──────────────────────▼──────────────────────────┐    │
-│  │  [Step 2] ProsecutorAgent                       │    │
-│  │   - 제안 경로의 위험 요소 / 충돌 위험 반박      │    │
-│  └──────────────────────┬──────────────────────────┘    │
-│                         │                               │
-│  ┌──────────────────────▼──────────────────────────┐    │
-│  │  [Step 3] DefenseAttorneyAgent                  │    │
-│  │   - 효율성 / 실현 가능성 관점에서 경로 변호     │    │
-│  └──────────────────────┬──────────────────────────┘    │
-│                         │                               │
-│  ┌──────────────────────▼──────────────────────────┐    │
-│  │  [Step 4] JudgeAgent  (Gemini 1.5 Pro)          │    │
-│  │   - 양측 논거 종합 → 최종 경로 판결             │    │
-│  │   - JSON 형식으로 최종 waypoint 출력            │    │
-│  └──────────────────────┬──────────────────────────┘    │
-│                         │                               │
-└─────────────────────────┼───────────────────────────────┘
-                          │  Waypoints (x, y) JSON
-┌─────────────────────────▼───────────────────────────────┐
-│                  🤖  BODY                                │
-│                  DIAL-MPC                               │
-│                                                         │
-│   CMA-ES 기반 Model Predictive Control                  │
-│   - 학습 데이터 불필요 (Training-Free)                  │
-│   - MuJoCo/MJX 물리 시뮬레이션 환경                    │
-│   - Unitree Go2 / H1 로봇 지원                         │
-│                                                         │
-└─────────────────────────┬───────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────┐
-│                       OUTPUT                            │
-│            Robot Physical Execution + Visualization     │
-└─────────────────────────────────────────────────────────┘
+씬 생성 (generate_random_baffle_maze.py)
+    │  랜덤 seed → slalom(복도형) 또는 boxes(자유배치형) 레이아웃 XML 생성
+    ▼
+씬 렌더링 (oracle_gen.py)
+    │  MuJoCo로 top-down 이미지 렌더 → data/<scene>/oracle.png
+    ▼
+Neural A* 초기 경로 제안 (run_neural_astar_step.py, conda env: neural-astar)
+    │  oracle.png → 32x32 occupancy grid → 사전학습 Neural A* 순전파
+    │  → line-of-sight 단순화 + 보폭 제약 → coordinate_proposal.json
+    ▼
+안전 마진 보정 (waypoint_generator.py)
+    │  EDT(distance-field) 기반 결정론적 보정: 벽과의 clearance가
+    │  HARD_RADIUS_M(0.4m) 미만이면 강제 이동, SOFT_RADIUS_M(0.6m)까지
+    │  코너 우회 탐색. VLM 판단 없이 100% 재현 가능.
+    │  → data/<scene>/waypoint_gen_v1/last_judged_path.json + verdict.png
+    ▼
+DIAL-MPC 물리 시뮬레이션 검증 (dial_mpc/, conda env: vlm_court)
+    │  CMA-ES 기반 MPC로 실제 로봇이 해당 경로를 걸을 수 있는지 검증
+    │  → data/<scene>/*_states.npy
+    ▼
+낙상 판정 (check_fall.py)
+       states.npy의 z-height 궤적으로 낙상 여부 최종 판정
 ```
 
----
-
-## Why Courtroom Debate?
-
-단일 LLM에게 경로를 요청하면 hallucination(환각)이나 물리적으로 불가능한 경로가 출력될 수 있습니다. 본 프로젝트는 이를 **적대적 다중 에이전트 토론(Adversarial Multi-Agent Debate)** 구조로 해결합니다.
-
-| 역할 | 모델 | 기능 |
-|------|------|------|
-| CoordinateAgent | Gemini 1.5 Flash | 초기 경로 제안 |
-| ProsecutorAgent | Gemini 1.5 Flash | 경로 위험성 검증 |
-| DefenseAttorneyAgent | Gemini 1.5 Flash | 경로 효율성 변호 |
-| **JudgeAgent** | **Gemini 1.5 Pro** | **최종 경로 확정** |
-
-검사와 변호인의 논거를 모두 청취한 판사(Judge)가 최종 경로를 결정하므로, 단일 에이전트 대비 안전성과 신뢰성이 향상됩니다.
+전체 파이프라인은 `run_random_batch_v2.py` 하나로 실행됩니다.
 
 ---
 
-## Why DIAL-MPC?
+## Setup
 
-기존 로봇 제어 방식의 한계:
+### Conda 환경 (2개로 분리되어 있음)
 
-| 방식 | 한계 |
-|------|------|
-| 강화학습(RL) | 환경별 수백만 스텝 재학습 필요 |
-| 모방 학습 | 대규모 시연 데이터셋 필요 |
-| 전통 MPC | 정밀한 수식 모델 설계 필요 |
+- **`vlm_court`**: 씬 생성/렌더링/waypoint 보정/DIAL-MPC 실행용 (MuJoCo, JAX, matplotlib)
+- **`neural-astar`**: Neural A* 추론/fine-tuning 전용 (PyTorch, PyTorch Lightning)
 
-**DIAL-MPC** ([논문 링크](https://arxiv.org/abs/2409.15610))는 CMA-ES(진화 전략) 기반으로 동작하여:
-- 사전 학습 데이터 없이 실시간 최적화
-- MuJoCo 물리 엔진으로 다중 궤적 병렬 시뮬레이션
-- Unitree Go2 (4족 보행), H1 (휴머노이드) 즉시 지원
+두 개로 나뉜 이유는 PyTorch/CUDA 버전 호환성 문제 때문입니다. `neural-astar` env의 PyTorch 빌드는 최신 GPU(sm_120 이상)를 지원하지 않아 **CPU로 폴백**합니다 — Neural A* 모델 자체가 작아서(391K 파라미터) CPU로도 실용적인 속도가 나옵니다.
 
-VLM이 계획한 waypoint를 받아 물리 법칙 내에서 실현 가능한 모션으로 변환합니다.
+### 환경별 설치
 
----
+```bash
+# --- vlm_court env: 씬 생성/렌더링/waypoint 보정/DIAL-MPC ---
+conda create -n vlm_court python=3.10
+conda activate vlm_court
+pip install -r requirements-vlm_court.txt
+pip install -e dial_mpc/   # repo에 이미 포함되어 있음 (아래 참고)
 
-## Demo
+# --- neural-astar env: Neural A* 추론/fine-tuning ---
+conda create -n neural-astar python=3.10
+conda activate neural-astar
+pip install -r requirements-neural-astar.txt
 
-### VLM Courtroom — Path Planning Results
+git clone https://github.com/omron-sinicx/neural-astar
+pip install -e neural-astar/
+```
 
-<img width="667" height="531" alt="image" src="https://github.com/user-attachments/assets/dbc66380-aaf4-4fc3-bd83-f72ece4cc2e3" />
+`dial_mpc/`는 [LeCAR-Lab/dial-mpc](https://github.com/LeCAR-Lab/dial-mpc)를 이 프로젝트 요구에 맞게 직접 수정(패치)한 버전이라 **repo에 그대로 포함**되어 있습니다 (별도 clone 불필요). `neural-astar/`는 수정 없이 그대로 쓰는 순수 외부 의존성이라 `.gitignore` 처리되어 있으며, 별도로 clone해야 합니다. `run_neural_astar_step.py`의 `CKPT_PATH`가 `neural-astar/model/mazes_032_moore_c8/lightning_logs/version_0`을 기본 사전학습 체크포인트로 참조하므로, 클론된 `neural-astar/` 안에 해당 체크포인트가 포함되어 있는지 확인하세요.
 
+`requirements-*.txt`는 핵심 패키지만 정리한 목록입니다. `neural-astar`를 `pip install -e`로 설치하면 `setup.py`/`pyproject.toml`에 정의된 나머지 의존성이 자동으로 딸려 설치됩니다.
 
----
+### 카메라/좌표계 상수
 
-### DIAL-MPC — Unitree Go2 Walking
-
-<!-- 로컬 GIF/MP4 사용 시 (GitHub은 GIF 자동 재생 지원) -->
-
-
-
-https://github.com/user-attachments/assets/c6f617f0-534c-4fe9-84ec-8694296bfb28
-
-
-
----
-
-## Key Features
-
-- **Training-Free**: 새로운 환경, 새로운 로봇에 재학습 없이 즉시 적용
-- **Multi-Agent Verification**: 토론 기반 경로 검증으로 단일 LLM 대비 신뢰성 향상
-- **Visual Grounding**: 이미지 직접 분석 → 별도 센서 맵핑 파이프라인 불필요
-- **Memory**: ChromaDB 벡터 DB로 경로 히스토리 저장 및 유사 상황 검색
-- **Modular**: 뇌(Brain)와 몸(Body)이 독립 모듈 → 각각 교체/업그레이드 가능
-
----
-
-## Robot Physical Constraints (Go2)
-
-VLM 에이전트는 경로 생성 시 아래 물리 제약을 준수합니다:
+`oracle_gen.py`, `run_neural_astar_step.py`, `waypoint_generator.py`가 공유하는 고정 상수입니다 (임의로 바꾸면 좌표계가 깨집니다):
 
 ```
-- 동적 안전 반경: 0.5m
-- 장애물 안전 마진: 0.5m 이상
-- 통과 불가 갭: 0.8m 미만
-- 스텝 길이: 0.4m ~ 1.0m (권장 0.6~0.7m)
-- 최소 회전 반경: 0.5m (급격한 방향 전환 금지)
+ROBOT_PX = (421.0, 540.0)   # 로봇(카메라 원점) 픽셀 좌표
+PPM = 150.0                  # pixel per meter
+GRID = 32                    # Neural A* 입력 grid 해상도
+CAMERA_VISIBLE_X_MAX_M ≈ 5.3 # 카메라가 실제로 담는 최대 x 범위 (비대칭 FOV)
 ```
 
 ---
 
-## Future Vision: Personality-Weighted Robot
+## Quick Start
 
-본 아키텍처의 핵심 확장 가능성은 **Brain 모듈에 성격(Personality) 파라미터를 주입**하는 것입니다.
+씬 1개를 처음부터 끝까지 (DIAL-MPC 포함) 돌리기:
+
+```bash
+conda activate vlm_court
+python3 run_random_batch_v2.py --n-scenes 1 --start-seed 0 --run-dial
+```
+
+DIAL-MPC 없이 경로 생성까지만 (빠른 확인용):
+
+```bash
+python3 run_random_batch_v2.py --n-scenes 10 --start-seed 0
+```
+
+주요 옵션:
+
+| 옵션 | 기본값 | 설명 |
+|---|---|---|
+| `--n-scenes` | 8 | 생성할 씬 개수 |
+| `--start-seed` | 0 | 시작 seed (다른 배치와 안 겹치게 조정) |
+| `--n-steps` | 800 | DIAL-MPC 시뮬레이션 스텝 수 |
+| `--box-prob` | 0.5 | boxes 레이아웃 선택 확률 (나머지는 slalom) |
+| `--run-dial` | off | DIAL-MPC까지 실행할지 여부 |
+| `--prefix` | `B` | 씬 이름 접두사 (`oracle_scene_{prefix}{seed:04d}`) — 배치별로 분리할 때 사용 |
+| `--manifest` | `data/random_batch_manifest_v2.csv` | 결과 기록 CSV 경로 |
+
+### 출력 구조 (씬 1개당)
+
+```
+data/<scene>/
+├── oracle.png                          # 렌더링된 씬 이미지
+├── neural_astar/
+│   ├── coordinate_proposal.json        # Neural A* 초기 제안 경로
+│   └── overlay_solo.png
+├── waypoint_gen_v1/
+│   ├── last_judged_path.json           # 최종 안전 보정 경로
+│   ├── log.txt                         # 보정 과정 로그 (PASSED 여부 포함)
+│   └── verdict.png                     # 경로 시각화 (반드시 확인할 것)
+├── last_judged_path.json               # DIAL-MPC 입력용 복사본
+└── *_states.npy                        # DIAL-MPC 시뮬레이션 결과 (--run-dial 시)
+```
+
+매니페스트 CSV(`data/random_batch_manifest_v*.csv`)에 씬별 `generator_passed`(안전 보정 성공 여부), `dial_mpc_ok`(실제 낙상 없이 완주 여부)가 기록됩니다. **`dial_mpc_ok=True`인 경로만 실제로 검증된 안전 경로입니다.**
+
+### 개별 스테이지 실행 (테스트 씬 1개로 특정 단계만 확인)
+
+전체 파이프라인을 다 안 돌리고 특정 단계 결과만 보고 싶을 때 사용합니다. 예: Neural A*가 뽑은 초기 경로만 빠르게 확인.
+
+```bash
+conda activate vlm_court
+
+# 1. 테스트 씬 1개 생성
+python3 generate_random_baffle_maze.py --n-scenes 1 --start-seed 500
+# → dial_mpc/dial_mpc/models/unitree_go2/oracle_scene_R000.xml 생성됨
+# ⚠️ 파일명은 --start-seed가 아니라 루프 인덱스(i) 기준으로 R000, R001...로 붙습니다.
+#    즉 --n-scenes 1로 여러 번 실행하면 매번 oracle_scene_R000.xml을 덮어씁니다.
+#    여러 개를 따로 보존하려면 --out-dir을 매번 다르게 지정하거나 생성 직후 파일명을 바꿔두세요.
+
+# 2. 렌더링 → data/oracle_scene_R000/oracle.png 생성
+python3 oracle_gen.py oracle_scene_R000.xml
+
+# 3. Neural A* 초기 경로만 확인 (--goal-x/--goal-y는 로봇 기준 world 좌표, 단위 m)
+conda activate neural-astar
+python3 run_neural_astar_step.py --scene oracle_scene_R000 --goal-x 3.0 --goal-y 1.0
+# → data/oracle_scene_R000/neural_astar/{overlay_solo.png, coordinate_proposal.json, path_info.json}
+```
+
+여기서 멈추면 Neural A*의 raw 제안 경로(안전 마진 보정 전)만 본 것입니다. `waypoint_generator.py`는 별도 CLI가 없고 `run_random_batch_v2.py`에서 함수로 import해서 쓰는 모듈이라, 안전 마진 보정까지 단독으로 보려면 아래처럼 직접 호출합니다:
 
 ```python
-# 예시: 성격 파라미터 주입
-personality = {
-    "aggression": 0.2,      # 낮을수록 보수적 경로
-    "curiosity": 0.8,       # 높을수록 탐색적 행동
-    "risk_tolerance": 0.3,  # 낮을수록 안전 마진 증가
-    "empathy": 0.9          # 높을수록 주변 개체 회피 우선
-}
+# check_waypoint.py 같은 이름으로 저장 후 conda activate vlm_court 상태에서 실행
+import json
+from waypoint_generator import generate_waypoints
+from run_neural_astar_step import ROBOT_PX, PPM
+
+scene = "oracle_scene_R000"
+image_path = f"data/{scene}/oracle.png"
+with open(f"data/{scene}/neural_astar/coordinate_proposal.json") as f:
+    coordinate_proposal = json.load(f)
+
+final_coords, passed, gen_log = generate_waypoints(image_path, coordinate_proposal, ROBOT_PX, PPM)
+print("PASSED:", passed)
+for line in gen_log:
+    print(line)
 ```
 
-이 파라미터들이 각 에이전트의 프롬프트와 판단 기준에 반영되면:
+DIAL-MPC 물리 검증까지 단독으로 돌리는 건 `dial_core.py` 호출이 훨씬 복잡해서 별도 단순 CLI가 없습니다 — 이 단계까지 필요하면 그냥 `run_random_batch_v2.py --n-scenes 1 --start-seed <seed> --run-dial`로 전체를 도는 게 제일 간단합니다.
 
-- **같은 환경**에서도 로봇마다 다른 행동 양식을 보임
-- 상황에 따라 성격이 동적으로 변화하는 **감정 기반 로봇** 구현 가능
+### 운영 주의사항
 
-### 응용 분야
+- GPU가 다른 프로세스와 공유되는 환경이면 DIAL-MPC(JAX)가 `CUDA_ERROR_OUT_OF_MEMORY`로 죽을 수 있습니다. 이 경우 `elapsed_s`가 비정상적으로 짧게(수십 초) 찍히는 게 특징입니다 — 실제 물리 실패가 아니라 리소스 경합이니, `XLA_PYTHON_CLIENT_PREALLOCATE=false` 환경변수로 재시도하세요.
+- 야간/장시간 배치는 반드시 `tmux` 세션 안에서 실행하세요 (`tmux new -d -s <이름> "<명령어>"`로 바로 백그라운드 시작 가능). 일반 SSH 터미널 종료 시 프로세스가 죽습니다.
 
-| 분야 | 적용 예시 |
-|------|-----------|
-| 로봇 경찰견 | 고위험 상황 → aggression↑, risk_tolerance↑ / 민간 구조 → empathy↑ |
-| 의료 서비스 로봇 | empathy↑, aggression=0 으로 환자 친화적 행동 |
-| 물류 로봇 | efficiency↑, risk_tolerance 중간 |
-| 재난 구조 로봇 | curiosity↑ (미지 환경 탐색), risk_tolerance↑ |
+---
 
-단순 도구가 아닌, **맥락을 이해하고 성격에 따라 판단하는 로봇**으로의 전환점이 될 수 있습니다.
+## Fine-tuning (`finetune/`)
+
+사전학습된 Neural A*(`omron-sinicx/neural-astar`의 `mazes_032_moore_c8` 체크포인트)는 표준 미로 벤치마크로 학습되어 있어, 우리 씬(카메라 FOV 제약, 특정 장애물 분포)과는 도메인이 다릅니다. `finetune/`은 위 파이프라인으로 만든 **DIAL-MPC 검증까지 통과한 경로**를 GT로 삼아 fine-tuning하는 코드입니다.
+
+```
+finetune/
+├── build_dataset.py    # manifest에서 generator_passed & dial_mpc_ok 씬만 골라
+│                        # (map, start, goal, opt_traj) 32x32 텐서로 변환, npz 캐시 생성
+├── train.py             # 사전학습 체크포인트 로드 → RMSprop으로 낮은 lr fine-tune
+├── eval_compare.py       # fine-tune 전/후 val set loss·p_opt·p_exp 비교
+├── verify_compare.py     # held-out val 씬에서 GT/사전학습/fine-tuned 경로 시각 비교
+└── pilot10_compare.py    # 학습에 안 쓰인 새 씬 생성 + 3-way 경로 비교 (일반화 검증)
+```
+
+### 실행 순서
+
+```bash
+conda activate vlm_court
+python3 finetune/build_dataset.py          # cache/dataset.npz 생성
+
+conda activate neural-astar
+python3 finetune/train.py --epochs 30 --lr 1e-4
+python3 finetune/eval_compare.py           # 정량 비교
+python3 finetune/pilot10_compare.py        # 새 씬으로 정성 비교 (필수)
+```
+
+⚠️ `build_dataset.py`/`eval_compare.py`/`pilot10_compare.py`는 CLI 인자가 없습니다 (`train.py`만 `--epochs`/`--lr`/`--batch-size`/`--val-ratio` 지원). `build_dataset.py`는 15번 줄에 `MANIFEST = "data/random_batch_manifest_v2.csv"`로 **경로가 하드코딩**되어 있어, 다른 배치(예: v3)를 학습에 포함하려면 이 줄을 직접 고치거나 manifest CSV들을 먼저 병합해야 합니다.
+
+### 방법론
+
+- **입력**: `oracle.png`의 벽 마스크를 32x32로 다운샘플한 occupancy map + start/goal one-hot map (추론 파이프라인과 완전히 동일한 좌표 변환 함수 재사용, 좌표계 불일치 없음)
+- **정답(GT)**: `waypoint_generator.py`가 보정하고 DIAL-MPC로 낙상 없이 검증된 최종 경로를 32x32 grid에 선분으로 래스터화
+- **Loss**: `L1Loss(model.histories, GT_opt_traj)` — 미분가능 A* 탐색의 방문 히트맵을 GT 경로에 맞춤
+- **⚠️ 데이터 규모 주의**: 80개 샘플로 실험한 결과, 30 epoch은 개선되지만 150 epoch은 **과적합**(train loss는 계속 감소하지만 val loss는 오히려 증가, 새 씬 일반화 실패)이 확인되었습니다. Epoch을 늘리기보다 씬 개수를 늘리는 쪽이 효과적입니다. Fine-tuning 전에는 반드시 `pilot10_compare.py`로 **학습에 안 쓰인 새 씬**에서 개선을 확인하세요 — val set만으로는 과적합을 못 잡습니다.
 
 ---
 
 ## Project Structure
 
 ```
-HELM-Brain/
-├── vlm_courtroom/              # 🧠 Brain Module
-│   ├── config.py               # Vertex AI (Gemini) 설정
-│   ├── main_court.py           # 실행 진입점
-│   ├── agents/
-│   │   ├── base_agent.py       # 에이전트 공통 인터페이스
-│   │   └── specific_agents.py  # 4개 전문 에이전트 구현
-│   ├── court/
-│   │   └── courtroom.py        # 법정 진행 및 경로 시각화
-│   ├── inputs/                 # 입력 이미지 저장
-│   └── outputs/                # 경로 시각화 결과 저장
-│
-├── dial_mpc/                   # 🤖 Body Module (DIAL-MPC)
-│   ├── dial_mpc/
-│   │   ├── core/               # CMA-ES MPC 핵심 알고리즘
-│   │   ├── envs/               # 로봇 환경 정의
-│   │   ├── models/             # Unitree Go2, H1 MuJoCo 모델
-│   │   └── deploy/             # 실제 로봇 배포 인터페이스
-│   └── examples/               # 실행 예시 (trot, jump, loco)
-│
-└── unitree_go2_trot/           # 실험 결과 데이터
-    └── *.html / *.pdf          # Brax 시뮬레이션 시각화
+LLM-Robot-Planner/
+├── generate_random_baffle_maze.py   # 씬 생성 (slalom / boxes 레이아웃)
+├── oracle_gen.py                    # MuJoCo 렌더링
+├── run_neural_astar_step.py         # Neural A* 초기 경로 제안
+├── waypoint_generator.py            # EDT 기반 결정론적 안전 마진 보정
+├── run_random_batch_v2.py           # 전체 파이프라인 오케스트레이터 (메인 엔트리)
+├── check_fall.py                    # DIAL-MPC 결과 낙상 판정 유틸
+├── requirements-vlm_court.txt       # vlm_court env 핵심 패키지
+├── requirements-neural-astar.txt    # neural-astar env 핵심 패키지
+├── finetune/                        # Neural A* fine-tuning
+├── dial_mpc/                        # DIAL-MPC (LeCAR-Lab/dial-mpc를 이 프로젝트용으로 패치, repo에 포함)
+└── neural-astar/                    # (순수 외부 의존성, .gitignore 처리, 별도 clone 필요)
 ```
 
----
-
-## Getting Started
-
-### Requirements
-
-```bash
-# Python 3.10+
-pip install google-cloud-aiplatform chromadb matplotlib
-pip install -e dial_mpc/
-```
-
-### Vertex AI 설정
-
-Google Cloud 서비스 계정 키를 발급 후:
-
-```python
-# vlm_courtroom/config.py
-KEY_PATH = "/path/to/your/google_vertex_key.json"
-PROJECT_ID = "your-gcp-project-id"
-```
-
-### 실행
-
-```bash
-python vlm_courtroom/main_court.py
-```
-
-### DIAL-MPC 라이브러리 다운로드 
-dial-mpc 파일에 있는 README 확인.
-
-### DIAL-MPC 실행
-```bash
-python dial_mpc/dial_mpc/core/dial_core.py --example unitree_go2_trot
-```
 ---
 
 ## References
 
-- **DIAL-MPC**: [Diffusion-Inspired Annealing for Loco-manipulation](https://arxiv.org/abs/2409.15610)
-- **Unitree Go2**: Quadruped robot platform
-- **MuJoCo MJX**: JAX-accelerated physics simulation
-- **Gemini 1.5**: Google DeepMind multimodal language model
+- Neural A*: [omron-sinicx/neural-astar](https://github.com/omron-sinicx/neural-astar)
+- DIAL-MPC: [LeCAR-Lab/dial-mpc](https://github.com/LeCAR-Lab/dial-mpc) ([논문](https://arxiv.org/abs/2409.15610))
+- Unitree Go2 (MuJoCo MJX 물리 시뮬레이션)
