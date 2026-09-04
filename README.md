@@ -51,9 +51,7 @@ DIAL-MPC 물리 시뮬레이션 검증 (dial_mpc/, conda env: vlm_court)
 conda create -n vlm_court python=3.10
 conda activate vlm_court
 pip install -r requirements-vlm_court.txt
-
-git clone https://github.com/LeCAR-Lab/dial-mpc dial_mpc
-pip install -e dial_mpc/
+pip install -e dial_mpc/   # repo에 이미 포함되어 있음 (아래 참고)
 
 # --- neural-astar env: Neural A* 추론/fine-tuning ---
 conda create -n neural-astar python=3.10
@@ -64,9 +62,9 @@ git clone https://github.com/omron-sinicx/neural-astar
 pip install -e neural-astar/
 ```
 
-두 외부 저장소(`dial_mpc/`, `neural-astar/`) 모두 repo 루트에 위치해야 하며, `.gitignore`에 의해 버전관리 대상에서 제외됩니다. `run_neural_astar_step.py`의 `CKPT_PATH`가 `neural-astar/model/mazes_032_moore_c8/lightning_logs/version_0`을 기본 사전학습 체크포인트로 참조하므로, 클론된 `neural-astar/` 안에 해당 체크포인트가 포함되어 있는지 확인하세요.
+`dial_mpc/`는 [LeCAR-Lab/dial-mpc](https://github.com/LeCAR-Lab/dial-mpc)를 이 프로젝트 요구에 맞게 직접 수정(패치)한 버전이라 **repo에 그대로 포함**되어 있습니다 (별도 clone 불필요). `neural-astar/`는 수정 없이 그대로 쓰는 순수 외부 의존성이라 `.gitignore` 처리되어 있으며, 별도로 clone해야 합니다. `run_neural_astar_step.py`의 `CKPT_PATH`가 `neural-astar/model/mazes_032_moore_c8/lightning_logs/version_0`을 기본 사전학습 체크포인트로 참조하므로, 클론된 `neural-astar/` 안에 해당 체크포인트가 포함되어 있는지 확인하세요.
 
-`requirements-*.txt`는 핵심 패키지만 정리한 목록입니다. `dial_mpc`/`neural-astar`를 `pip install -e`로 설치하면 각 프로젝트의 `setup.py`/`pyproject.toml`에 정의된 나머지 의존성이 자동으로 딸려 설치됩니다.
+`requirements-*.txt`는 핵심 패키지만 정리한 목록입니다. `neural-astar`를 `pip install -e`로 설치하면 `setup.py`/`pyproject.toml`에 정의된 나머지 의존성이 자동으로 딸려 설치됩니다.
 
 ### 카메라/좌표계 상수
 
@@ -126,6 +124,50 @@ data/<scene>/
 
 매니페스트 CSV(`data/random_batch_manifest_v*.csv`)에 씬별 `generator_passed`(안전 보정 성공 여부), `dial_mpc_ok`(실제 낙상 없이 완주 여부)가 기록됩니다. **`dial_mpc_ok=True`인 경로만 실제로 검증된 안전 경로입니다.**
 
+### 개별 스테이지 실행 (테스트 씬 1개로 특정 단계만 확인)
+
+전체 파이프라인을 다 안 돌리고 특정 단계 결과만 보고 싶을 때 사용합니다. 예: Neural A*가 뽑은 초기 경로만 빠르게 확인.
+
+```bash
+conda activate vlm_court
+
+# 1. 테스트 씬 1개 생성
+python3 generate_random_baffle_maze.py --n-scenes 1 --start-seed 500
+# → dial_mpc/dial_mpc/models/unitree_go2/oracle_scene_R000.xml 생성됨
+# ⚠️ 파일명은 --start-seed가 아니라 루프 인덱스(i) 기준으로 R000, R001...로 붙습니다.
+#    즉 --n-scenes 1로 여러 번 실행하면 매번 oracle_scene_R000.xml을 덮어씁니다.
+#    여러 개를 따로 보존하려면 --out-dir을 매번 다르게 지정하거나 생성 직후 파일명을 바꿔두세요.
+
+# 2. 렌더링 → data/oracle_scene_R000/oracle.png 생성
+python3 oracle_gen.py oracle_scene_R000.xml
+
+# 3. Neural A* 초기 경로만 확인 (--goal-x/--goal-y는 로봇 기준 world 좌표, 단위 m)
+conda activate neural-astar
+python3 run_neural_astar_step.py --scene oracle_scene_R000 --goal-x 3.0 --goal-y 1.0
+# → data/oracle_scene_R000/neural_astar/{overlay_solo.png, coordinate_proposal.json, path_info.json}
+```
+
+여기서 멈추면 Neural A*의 raw 제안 경로(안전 마진 보정 전)만 본 것입니다. `waypoint_generator.py`는 별도 CLI가 없고 `run_random_batch_v2.py`에서 함수로 import해서 쓰는 모듈이라, 안전 마진 보정까지 단독으로 보려면 아래처럼 직접 호출합니다:
+
+```python
+# check_waypoint.py 같은 이름으로 저장 후 conda activate vlm_court 상태에서 실행
+import json
+from waypoint_generator import generate_waypoints
+from run_neural_astar_step import ROBOT_PX, PPM
+
+scene = "oracle_scene_R000"
+image_path = f"data/{scene}/oracle.png"
+with open(f"data/{scene}/neural_astar/coordinate_proposal.json") as f:
+    coordinate_proposal = json.load(f)
+
+final_coords, passed, gen_log = generate_waypoints(image_path, coordinate_proposal, ROBOT_PX, PPM)
+print("PASSED:", passed)
+for line in gen_log:
+    print(line)
+```
+
+DIAL-MPC 물리 검증까지 단독으로 돌리는 건 `dial_core.py` 호출이 훨씬 복잡해서 별도 단순 CLI가 없습니다 — 이 단계까지 필요하면 그냥 `run_random_batch_v2.py --n-scenes 1 --start-seed <seed> --run-dial`로 전체를 도는 게 제일 간단합니다.
+
 ### 운영 주의사항
 
 - GPU가 다른 프로세스와 공유되는 환경이면 DIAL-MPC(JAX)가 `CUDA_ERROR_OUT_OF_MEMORY`로 죽을 수 있습니다. 이 경우 `elapsed_s`가 비정상적으로 짧게(수십 초) 찍히는 게 특징입니다 — 실제 물리 실패가 아니라 리소스 경합이니, `XLA_PYTHON_CLIENT_PREALLOCATE=false` 환경변수로 재시도하세요.
@@ -159,6 +201,8 @@ python3 finetune/eval_compare.py           # 정량 비교
 python3 finetune/pilot10_compare.py        # 새 씬으로 정성 비교 (필수)
 ```
 
+⚠️ `build_dataset.py`/`eval_compare.py`/`pilot10_compare.py`는 CLI 인자가 없습니다 (`train.py`만 `--epochs`/`--lr`/`--batch-size`/`--val-ratio` 지원). `build_dataset.py`는 15번 줄에 `MANIFEST = "data/random_batch_manifest_v2.csv"`로 **경로가 하드코딩**되어 있어, 다른 배치(예: v3)를 학습에 포함하려면 이 줄을 직접 고치거나 manifest CSV들을 먼저 병합해야 합니다.
+
 ### 방법론
 
 - **입력**: `oracle.png`의 벽 마스크를 32x32로 다운샘플한 occupancy map + start/goal one-hot map (추론 파이프라인과 완전히 동일한 좌표 변환 함수 재사용, 좌표계 불일치 없음)
@@ -181,8 +225,8 @@ LLM-Robot-Planner/
 ├── requirements-vlm_court.txt       # vlm_court env 핵심 패키지
 ├── requirements-neural-astar.txt    # neural-astar env 핵심 패키지
 ├── finetune/                        # Neural A* fine-tuning
-├── dial_mpc/                        # (외부 의존성, 별도 clone 필요)
-└── neural-astar/                    # (외부 의존성, 별도 clone 필요)
+├── dial_mpc/                        # DIAL-MPC (LeCAR-Lab/dial-mpc를 이 프로젝트용으로 패치, repo에 포함)
+└── neural-astar/                    # (순수 외부 의존성, .gitignore 처리, 별도 clone 필요)
 ```
 
 ---
