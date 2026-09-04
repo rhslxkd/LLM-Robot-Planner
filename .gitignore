@@ -55,4 +55,3 @@ dial_mpc/dial_mpc/models/unitree_go2/oracle_scene_*.xml
 
 # DIAL-MPC: external dependency, install separately from
 # https://github.com/LeCAR-Lab/dial-mpc (see README setup section)
-dial_mpc/
