@@ -1,0 +1,8 @@
+mujoco==3.6.0
+jax==0.6.2
+jaxlib==0.6.2
+brax==0.14.1
+matplotlib==3.10.8
+numpy==1.26.4
+scipy==1.15.3
+pillow==12.1.1
