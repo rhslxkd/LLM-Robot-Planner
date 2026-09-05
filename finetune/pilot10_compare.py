@@ -10,7 +10,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
-REPO = "/home/user/hyeonsoo/LLM-Robot-Planner"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root (파일 위치 기준 자동 계산, 컴퓨터마다 안전)
 sys.path.insert(0, REPO)
 os.chdir(REPO)
 from waypoint_generator import generate_waypoints
