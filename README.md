@@ -66,6 +66,14 @@ pip install -e neural-astar/
 
 `requirements-*.txt`는 핵심 패키지만 정리한 목록입니다. `neural-astar`를 `pip install -e`로 설치하면 `setup.py`/`pyproject.toml`에 정의된 나머지 의존성이 자동으로 딸려 설치됩니다.
 
+⚠️ **GPU 사용 시 추가 설치 필요**: `requirements-vlm_court.txt`의 `jax==0.6.2`를 순정 `pip install`로 깔면 CPU 전용 빌드가 설치될 수 있습니다. DIAL-MPC는 GPU 가속을 전제로 하므로, 설치 후 GPU 인식이 안 되면 CUDA 버전에 맞는 JAX를 별도로 다시 설치하세요 (예: `pip install -U "jax[cuda12]"` — 정확한 extras 이름은 사용 중인 CUDA 버전에 맞춰 [JAX 공식 설치 가이드](https://docs.jax.dev/en/latest/installation.html) 확인). 또한 MuJoCo의 headless(EGL) 렌더링에는 `libegl1`/`libgl1` 같은 시스템 패키지가 필요할 수 있습니다 (Ubuntu: `sudo apt install libegl1 libgl1`).
+
+⚠️ **Neural A* 사전학습 체크포인트**: `git clone https://github.com/omron-sinicx/neural-astar`만으로 `model/mazes_032_moore_c8/lightning_logs/version_0/checkpoints/*.ckpt`가 따라오지 않을 수 있습니다. 클론 후 아래 명령으로 실제 존재하는지 먼저 확인하세요:
+```bash
+find neural-astar/model/mazes_032_moore_c8 -name "*.ckpt"
+```
+아무것도 안 나오면 [neural-astar 저장소](https://github.com/omron-sinicx/neural-astar)의 README/Release를 참고해 체크포인트를 별도로 받아야 합니다.
+
 ### 카메라/좌표계 상수
 
 `oracle_gen.py`, `run_neural_astar_step.py`, `waypoint_generator.py`가 공유하는 고정 상수입니다 (임의로 바꾸면 좌표계가 깨집니다):
@@ -142,7 +150,9 @@ python3 core/generate_random_baffle_maze.py --n-scenes 1 --start-seed 500
 #    여러 개를 따로 보존하려면 --out-dir을 매번 다르게 지정하거나 생성 직후 파일명을 바꿔두세요.
 
 # 2. 렌더링 → data/oracle_scene_R000/oracle.png 생성
-python3 core/oracle_gen.py oracle_scene_R000.xml
+# (디스플레이 없는 서버/SSH 환경이면 MUJOCO_GL=egl 지정 필요 -- run_random_batch_v2.py는
+#  내부적으로 이미 이 환경변수를 자동 설정하지만, 이렇게 단독 실행할 땐 직접 줘야 함)
+MUJOCO_GL=egl python3 core/oracle_gen.py oracle_scene_R000.xml
 
 # 3. Neural A* 초기 경로만 확인 (--goal-x/--goal-y는 로봇 기준 world 좌표, 단위 m)
 conda activate neural-astar
@@ -183,6 +193,8 @@ DIAL-MPC 물리 검증까지 단독으로 돌리는 건 `dial_core.py` 호출이
 ## Fine-tuning (`finetune/`)
 
 사전학습된 Neural A*(`omron-sinicx/neural-astar`의 `mazes_032_moore_c8` 체크포인트)는 표준 미로 벤치마크로 학습되어 있어, 우리 씬(카메라 FOV 제약, 특정 장애물 분포)과는 도메인이 다릅니다. `finetune/`은 위 파이프라인으로 만든 **DIAL-MPC 검증까지 통과한 경로**를 GT로 삼아 fine-tuning하는 코드입니다.
+
+⚠️ **선행 조건**: 이 섹션은 `data/random_batch_manifest_v2.csv`에 `generator_passed=True`이면서 `dial_mpc_ok=True`인 씬이 이미 여러 개 쌓여 있다는 걸 전제로 합니다. 새로 클론한 저장소라면 이 매니페스트가 비어있으므로, 먼저 위 **Quick Start**로 `--run-dial`을 켜서 최소 수십 개 이상의 씬을 돌려 매니페스트를 채운 뒤에 이 섹션을 진행하세요. 그렇지 않으면 `build_dataset.py`가 "포함된 샘플이 0개"로 끝납니다.
 
 ```
 finetune/
