@@ -1,12 +1,12 @@
 """
 run_neural_astar_step.py
-neural-astar env 전용. run_random_batch.py(vlm_court env)에서
+neural-astar env 전용. run_random_batch_v2.py(vlm_court env)에서
 `conda run -n neural-astar`로 서브프로세스 호출됨.
 
 Neural A* raw grid path -> world 좌표 변환 -> line-of-sight 경로 단순화
-(visibility-aware shortcutting) -> 목표 waypoint 개수로 보정 -> 각 점의
-실제 통로 폭(clearance_m)을 perpendicular ray-casting으로 결정론적 계산
--> courtroom에 넘길 coordinate_proposal.json + 오버레이 이미지 저장.
+(visibility-aware shortcutting) -> 목표 waypoint 개수로 보정
+-> waypoint_generator.py에 넘길 coordinate_proposal.json(초기 제안 경로,
+안전 마진 검증은 waypoint_generator.py가 별도로 수행) + 오버레이 이미지 저장.
 
 사용: python run_neural_astar_step.py --scene oracle_scene_R000 --goal-x 5.3 --goal-y -1.2
 성공 시 data/<scene>/neural_astar/{overlay_solo.png, coordinate_proposal.json, path_info.json} 생성, exit 0.
@@ -30,11 +30,6 @@ WALL_DILATE_PX = 3        # line-of-sight 충돌체크용 마스크 팽창 폭(p
                            # 쓰지 않음(원본 red_mask로 정확한 값 유지).
 MIN_STEP_M = 0.4
 MAX_STEP_M = 1.0
-MIN_WALL_DIST_M = 0.4    # 2026-08-31: 통로 전체 폭(clearance_m)과 별개로,
-                         # 한쪽 벽에 치우쳐 지나가는 걸 막는 최소 편측 이격거리 기준.
-CORRECTION_MAX_SHIFT_M = 0.3  # 2026-08-31: 중앙 정렬 보정 시 이동량 상한. 이게 없으면 한쪽
-                         # 벽이 아주 멀 때(반대쪽이 열린 공간) shift가 무한정 커져서 원래
-                         # 위치에서 엉뚱하게 먼 곳으로 waypoint가 튀는 문제가 있었음 (실측 확인).
 
 def full_to_grid(px, py, w, h): return px * GRID / w, py * GRID / h
 def grid_to_full(gx, gy, w, h): return gx * w / GRID, gy * h / GRID
@@ -141,48 +136,6 @@ def path_length_m(points, ppm):
                  for i in range(1, len(points)))
     return px_len / ppm
 
-# ---------- Stage 4: 각 점의 실제 통로 폭(clearance_m) - perpendicular ray-casting ----------
-
-def measure_corridor_width_m(points, idx, red_mask, ppm):
-    """clearance_m 계산 + (0.8m 미만일 때) 통로 중앙으로 정렬한 좌표까지 함께 반환.
-    2026-08-29: Prosecutor가 attempt 1부터 정확한 교정 좌표를 받도록, courtroom.py의
-    compute_correction_suggestions()와 동일한 계산을 Neural A* 직후에 선제적으로 수행."""
-    h, w = red_mask.shape
-    if idx == 0:
-        tx, ty = points[1][0]-points[0][0], points[1][1]-points[0][1]
-    elif idx == len(points) - 1:
-        tx, ty = points[idx][0]-points[idx-1][0], points[idx][1]-points[idx-1][1]
-    else:
-        tx, ty = points[idx+1][0]-points[idx-1][0], points[idx+1][1]-points[idx-1][1]
-    norm = (tx**2 + ty**2) ** 0.5
-    if norm < 1e-6:
-        return 99.0, points[idx][0], points[idx][1]
-    perp_x, perp_y = -ty/norm, tx/norm  # 경로 진행방향에 수직인 단위벡터
-    x0, y0 = points[idx]
-    max_range = max(h, w)
-
-    def cast(dx, dy):
-        for r in range(1, max_range):
-            xi, yi = int(round(x0+dx*r)), int(round(y0+dy*r))
-            if not (0 <= xi < w and 0 <= yi < h):
-                return r  # 이미지 경계 벗어남 = 그쪽은 열려있다고 간주
-            if red_mask[yi, xi]:
-                return r
-        return max_range
-
-    d_pos = cast(perp_x, perp_y)
-    d_neg = cast(-perp_x, -perp_y)
-    width_m = (d_pos + d_neg) / ppm
-    width_m = 99.0 if width_m > 8.0 else round(width_m, 2)  # 너무 넓으면 "개방구역"으로 표기
-    near_m = round(min(d_pos, d_neg) / ppm, 2)   # 가까운 쪽 벽까지 거리 (편향 감지 + 설명용)
-    far_m = round(max(d_pos, d_neg) / ppm, 2)    # 먼 쪽 벽까지 거리 (좌/우 라벨 없이 크기만)
-
-    cap_px = CORRECTION_MAX_SHIFT_M * ppm
-    shift_px = max(-cap_px, min(cap_px, (d_pos - d_neg) / 2.0))
-    center_x = x0 + perp_x * shift_px
-    center_y = y0 + perp_y * shift_px
-    return width_m, center_x, center_y, near_m, far_m
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--scene", required=True)
@@ -274,19 +227,13 @@ def main():
     wp_final = enforce_step_constraints(wp_final, red_mask_dilated, PPM)
     final_length_m = path_length_m(wp_final, PPM)
 
-    # ---- Stage 4: 각 점의 실제 통로 폭(clearance_m), perpendicular ray-casting (원본 red_mask 사용) ----
+    # ---- 좌표 변환: world 좌표로만 저장. 안전 마진 검증/보정은
+    # waypoint_generator.py의 EDT 기반 로직이 별도로 담당한다 (이 스크립트는
+    # 초기 제안 경로만 만든다). ----
     coordinates = []
-    for idx, (px, py) in enumerate(wp_final):
+    for px, py in wp_final:
         wx, wy = full_to_world(px, py)
-        clearance, cx_px, cy_px, near_m, far_m = measure_corridor_width_m(wp_final, idx, red_mask, PPM)
-        entry = {"x": round(wx, 2), "y": round(wy, 2), "clearance_m": clearance}
-        if clearance < 0.8 or near_m < MIN_WALL_DIST_M:
-            cwx, cwy = full_to_world(cx_px, cy_px)
-            entry["suggested_x"] = round(cwx, 2)
-            entry["suggested_y"] = round(cwy, 2)
-            entry["near_wall_m"] = near_m
-            entry["far_wall_m"] = far_m
-        coordinates.append(entry)
+        coordinates.append({"x": round(wx, 2), "y": round(wy, 2)})
 
     with open(os.path.join(out_dir, "coordinate_proposal.json"), "w") as f:
         _json.dump(coordinates, f, indent=2)

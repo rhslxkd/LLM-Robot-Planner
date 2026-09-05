@@ -35,9 +35,9 @@ import mujoco
 from PIL import Image, ImageDraw, ImageFont
 
 # ─── 경로 ───────────────────────────────────────────────────────────────
-MODELS_DIR = os.path.join(os.path.dirname(__file__),
+MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)),
                           "dial_mpc", "dial_mpc", "models", "unitree_go2")
-DATA_DIR   = os.path.join(os.path.dirname(__file__), "data")
+DATA_DIR   = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 SCENE_GLOB = "oracle_scene_*.xml"        # 인자 없을 때 렌더할 씬 패턴
 
 # ─── 캘리브레이션 ───────────────────────────────────────────────────────

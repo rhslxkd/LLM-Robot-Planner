@@ -31,7 +31,7 @@ DIAL-MPC 물리 시뮬레이션 검증 (dial_mpc/, conda env: vlm_court)
        states.npy의 z-height 궤적으로 낙상 여부 최종 판정
 ```
 
-전체 파이프라인은 `run_random_batch_v2.py` 하나로 실행됩니다.
+전체 파이프라인은 `core/run_random_batch_v2.py` 하나로 실행됩니다.
 
 ---
 
@@ -85,13 +85,13 @@ CAMERA_VISIBLE_X_MAX_M ≈ 5.3 # 카메라가 실제로 담는 최대 x 범위 (
 
 ```bash
 conda activate vlm_court
-python3 run_random_batch_v2.py --n-scenes 1 --start-seed 0 --run-dial
+python3 core/run_random_batch_v2.py --n-scenes 1 --start-seed 0 --run-dial
 ```
 
 DIAL-MPC 없이 경로 생성까지만 (빠른 확인용):
 
 ```bash
-python3 run_random_batch_v2.py --n-scenes 10 --start-seed 0
+python3 core/run_random_batch_v2.py --n-scenes 10 --start-seed 0
 ```
 
 주요 옵션:
@@ -105,6 +105,9 @@ python3 run_random_batch_v2.py --n-scenes 10 --start-seed 0
 | `--run-dial` | off | DIAL-MPC까지 실행할지 여부 |
 | `--prefix` | `B` | 씬 이름 접두사 (`oracle_scene_{prefix}{seed:04d}`) — 배치별로 분리할 때 사용 |
 | `--manifest` | `data/random_batch_manifest_v2.csv` | 결과 기록 CSV 경로 |
+| `--purpose` | `unlabeled` | 이 배치의 용도 태그. `data/runs/{날짜}_{purpose}_{prefix}/`에 `run_meta.json`(전체 설정값)+`scenes.txt`(포함된 씬 목록)가 자동 기록됨 |
+
+씬 생성 자체도 매번 랜덤화됩니다 — 레이아웃(slalom/boxes)뿐 아니라 방 크기(`room_half_y`), 목표까지 거리(`min_dist_from_start`), 목표 x 범위(`goal_x_range`)까지 씬마다 다른 값으로 샘플링되어 Neural A* fine-tuning용 데이터 다양성을 확보합니다.
 
 ### 출력 구조 (씬 1개당)
 
@@ -132,26 +135,27 @@ data/<scene>/
 conda activate vlm_court
 
 # 1. 테스트 씬 1개 생성
-python3 generate_random_baffle_maze.py --n-scenes 1 --start-seed 500
+python3 core/generate_random_baffle_maze.py --n-scenes 1 --start-seed 500
 # → dial_mpc/dial_mpc/models/unitree_go2/oracle_scene_R000.xml 생성됨
 # ⚠️ 파일명은 --start-seed가 아니라 루프 인덱스(i) 기준으로 R000, R001...로 붙습니다.
 #    즉 --n-scenes 1로 여러 번 실행하면 매번 oracle_scene_R000.xml을 덮어씁니다.
 #    여러 개를 따로 보존하려면 --out-dir을 매번 다르게 지정하거나 생성 직후 파일명을 바꿔두세요.
 
 # 2. 렌더링 → data/oracle_scene_R000/oracle.png 생성
-python3 oracle_gen.py oracle_scene_R000.xml
+python3 core/oracle_gen.py oracle_scene_R000.xml
 
 # 3. Neural A* 초기 경로만 확인 (--goal-x/--goal-y는 로봇 기준 world 좌표, 단위 m)
 conda activate neural-astar
-python3 run_neural_astar_step.py --scene oracle_scene_R000 --goal-x 3.0 --goal-y 1.0
+python3 core/run_neural_astar_step.py --scene oracle_scene_R000 --goal-x 3.0 --goal-y 1.0
 # → data/oracle_scene_R000/neural_astar/{overlay_solo.png, coordinate_proposal.json, path_info.json}
 ```
 
-여기서 멈추면 Neural A*의 raw 제안 경로(안전 마진 보정 전)만 본 것입니다. `waypoint_generator.py`는 별도 CLI가 없고 `run_random_batch_v2.py`에서 함수로 import해서 쓰는 모듈이라, 안전 마진 보정까지 단독으로 보려면 아래처럼 직접 호출합니다:
+여기서 멈추면 Neural A*의 raw 제안 경로(안전 마진 보정 전)만 본 것입니다. `core/waypoint_generator.py`는 별도 CLI가 없고 `core/run_random_batch_v2.py`에서 함수로 import해서 쓰는 모듈이라, 안전 마진 보정까지 단독으로 보려면 아래처럼 직접 호출합니다:
 
 ```python
-# check_waypoint.py 같은 이름으로 저장 후 conda activate vlm_court 상태에서 실행
-import json
+# check_waypoint.py 같은 이름으로 레포 루트에 저장 후 conda activate vlm_court 상태에서 실행
+import sys, os, json
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "core"))
 from waypoint_generator import generate_waypoints
 from run_neural_astar_step import ROBOT_PX, PPM
 
@@ -166,12 +170,13 @@ for line in gen_log:
     print(line)
 ```
 
-DIAL-MPC 물리 검증까지 단독으로 돌리는 건 `dial_core.py` 호출이 훨씬 복잡해서 별도 단순 CLI가 없습니다 — 이 단계까지 필요하면 그냥 `run_random_batch_v2.py --n-scenes 1 --start-seed <seed> --run-dial`로 전체를 도는 게 제일 간단합니다.
+DIAL-MPC 물리 검증까지 단독으로 돌리는 건 `dial_core.py` 호출이 훨씬 복잡해서 별도 단순 CLI가 없습니다 — 이 단계까지 필요하면 그냥 `core/run_random_batch_v2.py --n-scenes 1 --start-seed <seed> --run-dial`로 전체를 도는 게 제일 간단합니다.
 
 ### 운영 주의사항
 
-- GPU가 다른 프로세스와 공유되는 환경이면 DIAL-MPC(JAX)가 `CUDA_ERROR_OUT_OF_MEMORY`로 죽을 수 있습니다. 이 경우 `elapsed_s`가 비정상적으로 짧게(수십 초) 찍히는 게 특징입니다 — 실제 물리 실패가 아니라 리소스 경합이니, `XLA_PYTHON_CLIENT_PREALLOCATE=false` 환경변수로 재시도하세요.
-- 야간/장시간 배치는 반드시 `tmux` 세션 안에서 실행하세요 (`tmux new -d -s <이름> "<명령어>"`로 바로 백그라운드 시작 가능). 일반 SSH 터미널 종료 시 프로세스가 죽습니다.
+- GPU가 다른 프로세스와 공유되는 환경에서 DIAL-MPC(JAX)가 `CUDA_ERROR_OUT_OF_MEMORY`로 죽는 문제는 `core/run_random_batch_v2.py`의 `run_dial_mpc()`에 `XLA_PYTHON_CLIENT_PREALLOCATE=false`/`XLA_PYTHON_CLIENT_MEM_FRACTION=0.3` 환경변수가 기본 반영되어 있어 자동으로 완화됩니다. 그래도 실패한 씬이 있다면 `elapsed_s`가 비정상적으로 짧게(수십 초 미만) 찍히는지로 리소스 경합 여부를 판별할 수 있습니다.
+- 야간/장시간 배치는 반드시 `tmux` 세션 안에서 실행하세요 (`tmux new -d -s <이름> "<명령어>"`로 바로 백그라운드 시작 가능). 일반 SSH 터미널 종료 시 프로세스가 죽습니다. `conda activate` 대신 `conda run -n <env> --no-capture-output`을 쓰면 tmux의 비대화형 셸에서도 안전하게 동작합니다.
+- 배치 실행 시 `--purpose` 태그를 지정하면 `data/runs/{날짜}_{purpose}_{prefix}/`에 그 배치의 설정값(`run_meta.json`)과 포함된 씬 목록(`scenes.txt`)이 자동 기록되어, 나중에 "이 배치가 뭐였는지" 추적하기 쉽습니다.
 
 ---
 
@@ -216,18 +221,27 @@ python3 finetune/pilot10_compare.py        # 새 씬으로 정성 비교 (필수
 
 ```
 LLM-Robot-Planner/
-├── generate_random_baffle_maze.py   # 씬 생성 (slalom / boxes 레이아웃)
-├── oracle_gen.py                    # MuJoCo 렌더링
-├── run_neural_astar_step.py         # Neural A* 초기 경로 제안
-├── waypoint_generator.py            # EDT 기반 결정론적 안전 마진 보정
-├── run_random_batch_v2.py           # 전체 파이프라인 오케스트레이터 (메인 엔트리)
-├── check_fall.py                    # DIAL-MPC 결과 낙상 판정 유틸
-├── requirements-vlm_court.txt       # vlm_court env 핵심 패키지
-├── requirements-neural-astar.txt    # neural-astar env 핵심 패키지
-├── finetune/                        # Neural A* fine-tuning
-├── dial_mpc/                        # DIAL-MPC (LeCAR-Lab/dial-mpc를 이 프로젝트용으로 패치, repo에 포함)
-└── neural-astar/                    # (순수 외부 의존성, .gitignore 처리, 별도 clone 필요)
+├── core/                             # 핵심 파이프라인 스크립트 (자주 쓰는 것들만 모음)
+│   ├── generate_random_baffle_maze.py  # 씬 생성 (slalom / boxes 레이아웃, 다양성 랜덤화)
+│   ├── oracle_gen.py                   # MuJoCo 렌더링
+│   ├── run_neural_astar_step.py        # Neural A* 초기 경로 제안
+│   ├── waypoint_generator.py           # EDT 기반 결정론적 안전 마진 보정
+│   ├── run_random_batch_v2.py          # 전체 파이프라인 오케스트레이터 (메인 엔트리)
+│   └── check_fall.py                   # DIAL-MPC 결과 낙상 판정 유틸 (수동 실행용)
+├── finetune/                         # Neural A* fine-tuning
+│   ├── build_dataset.py
+│   ├── train.py
+│   ├── eval_compare.py
+│   ├── verify_compare.py
+│   ├── pilot10_compare.py
+│   └── visualize_gradient.py           # cost map/histories fine-tune 전후 비교 시각화
+├── requirements-vlm_court.txt        # vlm_court env 핵심 패키지
+├── requirements-neural-astar.txt     # neural-astar env 핵심 패키지
+├── dial_mpc/                         # DIAL-MPC (LeCAR-Lab/dial-mpc를 이 프로젝트용으로 패치, repo에 포함)
+└── neural-astar/                     # (순수 외부 의존성, .gitignore 처리, 별도 clone 필요)
 ```
+
+`core/`의 스크립트들은 서로 bare import(`from waypoint_generator import ...`)로 연결되어 있어 같은 폴더 안에서만 동작합니다. `finetune/*.py`에서 이 모듈들을 가져다 쓸 때는 파일 상단에 `sys.path.insert(0, ..., "core")`가 이미 추가되어 있어 별도 조치 없이 `import run_neural_astar_step as nas`처럼 그대로 씁니다.
 
 ---
 
