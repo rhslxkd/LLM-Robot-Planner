@@ -16,6 +16,7 @@ import matplotlib.image as mpimg
 
 REPO = "/home/user/hyeonsoo/LLM-Robot-Planner"
 sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.join(REPO, "core"))
 os.chdir(REPO)
 
 from waypoint_generator import generate_waypoints
@@ -56,7 +57,7 @@ vlm_path_json: data/{scene}/last_judged_path.json
 
 def run_neural_astar_step(scene, goal_x, goal_y, timeout=120):
     cmd = ["conda", "run", "-n", NEURAL_ASTAR_ENV, "--no-capture-output",
-           "python", "run_neural_astar_step.py",
+           "python", "core/run_neural_astar_step.py",
            "--scene", scene, "--goal-x", str(goal_x), "--goal-y", str(goal_y)]
     try:
         proc = subprocess.run(cmd, cwd=REPO, timeout=timeout, capture_output=True, text=True)
@@ -107,8 +108,13 @@ def run_dial_mpc(scene, n_steps, timeout=None):
            sys.executable, "dial_mpc/dial_mpc/core/dial_core.py",
            "--example", scene, "--vlm-path-json", f"{out_dir}/last_judged_path.json",
            "--output-dir", out_dir]
+    # GPU 공유 환경에서 JAX가 메모리를 욕심껏 미리 할당(75~90%)하면서 다른 프로세스와
+    # 경합 시 CUDA_ERROR_OUT_OF_MEMORY로 즉시 죽는 문제 방지 (2026-09 200개 배치에서
+    # 실측 확인: 이 옵션으로 74/74 재시도 성공).
+    env = {**os.environ, "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
+           "XLA_PYTHON_CLIENT_MEM_FRACTION": "0.3"}
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 30)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 30, env=env)
     except subprocess.TimeoutExpired:
         return False, "hard timeout"
     produced = glob.glob(f"{out_dir}/*_states.npy")
@@ -124,7 +130,28 @@ def main():
     parser.add_argument("--run-dial", action="store_true")
     parser.add_argument("--prefix", type=str, default="B")
     parser.add_argument("--manifest", type=str, default="data/random_batch_manifest_v2.csv")
+    parser.add_argument("--purpose", type=str, default="unlabeled",
+                         help="이 배치의 용도 태그 (예: finetune_data, diversity_pilot, smoke_test)")
     args = parser.parse_args()
+
+    date_str = time.strftime("%Y%m%d")
+    run_dir = f"data/runs/{date_str}_{args.purpose}_{args.prefix}"
+    os.makedirs(run_dir, exist_ok=True)
+    run_meta = {
+        "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "purpose": args.purpose,
+        "prefix": args.prefix,
+        "start_seed": args.start_seed,
+        "n_scenes": args.n_scenes,
+        "n_steps": args.n_steps,
+        "box_prob": args.box_prob,
+        "run_dial": args.run_dial,
+        "manifest": args.manifest,
+    }
+    with open(f"{run_dir}/run_meta.json", "w") as f:
+        json.dump(run_meta, f, indent=2)
+    scenes_txt_path = f"{run_dir}/scenes.txt"
+    print(f"런 인덱스: {run_dir}/ (run_meta.json, scenes.txt)")
 
     manifest_path = args.manifest
     done = set()
@@ -149,13 +176,32 @@ def main():
 
             t0 = time.time()
             print(f"\n=== [{scene}] 시작 ===")
+            with open(scenes_txt_path, "a") as sf:
+                sf.write(scene + "\n")
 
             layout_rng = random.Random(seed * 7919 + 13)
             use_boxes = layout_rng.random() < args.box_prob
             if use_boxes:
-                xml, meta = generate_boxes(seed, scene)
+                room_half_y = layout_rng.uniform(2.0, 4.0)
+                goal_x_hi = 4.4
             else:
-                xml, meta = generate_slalom(seed, scene)
+                room_half_y = layout_rng.uniform(1.4, 2.4)
+                goal_x_hi = 4.6
+            goal_y_margin = room_half_y * 0.3
+            goal_y_bound = room_half_y - goal_y_margin
+            goal_x_range = (1.0, goal_x_hi)
+            max_dist = (goal_x_hi ** 2 + goal_y_bound ** 2) ** 0.5
+            min_dist_from_start = layout_rng.uniform(0.3, 0.85) * max_dist
+            diversity_kwargs = dict(
+                goal_x_range=goal_x_range,
+                room_half_y=room_half_y,
+                goal_y_margin=goal_y_margin,
+                min_dist_from_start=min_dist_from_start,
+            )
+            if use_boxes:
+                xml, meta = generate_boxes(seed, scene, **diversity_kwargs)
+            else:
+                xml, meta = generate_slalom(seed, scene, **diversity_kwargs)
             layout = meta.get("layout", "slalom")
             n_obstacles = meta.get("n_boxes", meta.get("n_baffles"))
             goal_x, goal_y = meta["goal_x"], meta["goal_y"]
@@ -167,7 +213,7 @@ def main():
             print(f"  씬 생성 완료 layout={layout} goal=({goal_x:.2f},{goal_y:.2f}) n_obstacles={n_obstacles}")
 
             env = {**os.environ, "MUJOCO_GL": "egl"}
-            render_proc = subprocess.run(["python", "oracle_gen.py", f"{scene}.xml"],
+            render_proc = subprocess.run(["python", "core/oracle_gen.py", f"{scene}.xml"],
                                           cwd=REPO, capture_output=True, text=True, timeout=60, env=env)
             if not os.path.exists(f"data/{scene}/oracle.png"):
                 print(f"  ⚠️ 렌더링 실패: {render_proc.stderr[-300:]}")

@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
 import run_neural_astar_step as nas  # GRID, ROBOT_PX, PPM, full_to_grid, CKPT_PATH 재사용
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

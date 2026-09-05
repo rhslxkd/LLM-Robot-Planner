@@ -1,6 +1,7 @@
 """
-val 8개 held-out 씬에서 GT(안전보정 경로) vs 사전학습 모델 vs fine-tuned 모델의
-raw Neural A* 출력 경로를 oracle.png 위에 겹쳐 그려서 시각 비교.
+Neural A* 인코더가 예측하는 cost map(모델이 각 셀을 얼마나 위험하다고 보는지)과
+histories(실제 탐색이 퍼진 영역)를 oracle.png 위에 겹쳐서 pretrained vs fine-tuned 비교.
+diff(fine-tuned - pretrained)까지 같이 그려서 코너(꺾이는 지점)에서 뭐가 바뀌었는지 진단.
 """
 import os, sys
 import numpy as np
@@ -10,11 +11,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
+from scipy.ndimage import zoom
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
 import run_neural_astar_step as nas
-
 from neural_astar.planner import NeuralAstar
 from neural_astar.utils.training import load_from_ptl_checkpoint
 
@@ -23,11 +24,7 @@ REPO_ROOT = os.path.dirname(HERE)
 CACHE_PATH = os.path.join(HERE, "cache/dataset.npz")
 PRETRAINED_CKPT = os.path.join(REPO_ROOT, nas.CKPT_PATH)
 FINETUNED_CKPT = os.path.join(HERE, "checkpoints")
-OUT_DIR = os.path.join(HERE, "verify")
-
-GRID = nas.GRID
-grid_to_full = nas.grid_to_full
-extract_ordered_path = nas.extract_ordered_path
+OUT_DIR = os.path.join(HERE, "gradient_maps")
 
 
 class SceneDataset(Dataset):
@@ -46,15 +43,9 @@ class SceneDataset(Dataset):
         return idx
 
 
-def grid_path_to_px(mask_2d, start_grid, goal_grid, w, h):
-    wp_grid = extract_ordered_path(mask_2d, start_grid, goal_grid)
-    if not wp_grid:
-        return [], []
-    xs, ys = [], []
-    for gx, gy in wp_grid:
-        px, py = grid_to_full(gx, gy, w, h)
-        xs.append(px); ys.append(py)
-    return xs, ys
+def upsample(arr32, h_img, w_img):
+    zy, zx = h_img / arr32.shape[0], w_img / arr32.shape[1]
+    return zoom(arr32, (zy, zx), order=1)
 
 
 def main():
@@ -86,39 +77,46 @@ def main():
         map_t = torch.from_numpy(full_ds.map_designs[idx]).float()[None]
         start_t = torch.from_numpy(full_ds.start_maps[idx]).float()[None]
         goal_t = torch.from_numpy(full_ds.goal_maps[idx]).float()[None]
-        opt_traj = full_ds.opt_trajs[idx][0]
-
-        start_grid = tuple(int(v) for v in np.argwhere(full_ds.start_maps[idx][0])[0][::-1])
-        goal_grid = tuple(int(v) for v in np.argwhere(full_ds.goal_maps[idx][0])[0][::-1])
 
         with torch.no_grad():
+            cost_pre = model_pre.encode(map_t, start_t, goal_t)[0, 0].numpy()
+            cost_ft = model_ft.encode(map_t, start_t, goal_t)[0, 0].numpy()
             out_pre = model_pre(map_t, start_t, goal_t)
             out_ft = model_ft(map_t, start_t, goal_t)
 
-        mask_pre = (out_pre.paths[0, 0].numpy() > 0.5)
-        mask_ft = (out_ft.paths[0, 0].numpy() > 0.5)
-        mask_gt = (opt_traj > 0.5)
+        hist_pre = out_pre.histories[0, 0].numpy()
+        hist_ft = out_ft.histories[0, 0].numpy()
 
-        gt_xs, gt_ys = grid_path_to_px(mask_gt, start_grid, goal_grid, w_img, h_img)
-        pre_xs, pre_ys = grid_path_to_px(mask_pre, start_grid, goal_grid, w_img, h_img)
-        ft_xs, ft_ys = grid_path_to_px(mask_ft, start_grid, goal_grid, w_img, h_img)
+        fig, axes = plt.subplots(2, 3, figsize=(20, 14))
+        rows = [
+            ("cost map", cost_pre, cost_ft),
+            ("histories", hist_pre, hist_ft),
+        ]
+        for r, (label, pre, ft) in enumerate(rows):
+            diff = ft - pre
+            for c, (title, arr, cmap, vlim) in enumerate([
+                (f"pretrained {label}", pre, "jet", None),
+                (f"fine-tuned {label}", ft, "jet", None),
+                (f"diff (ft - pre) {label}", diff, "bwr", np.abs(diff).max() + 1e-6),
+            ]):
+                ax = axes[r, c]
+                ax.imshow(img)
+                heat = upsample(arr, h_img, w_img)
+                kwargs = dict(cmap=cmap, alpha=0.55, extent=[0, w_img, h_img, 0])
+                if vlim is not None:
+                    kwargs["vmin"], kwargs["vmax"] = -vlim, vlim
+                im = ax.imshow(heat, **kwargs)
+                ax.set_title(title, fontsize=10)
+                plt.colorbar(im, ax=ax, fraction=0.046)
 
-        fig, ax = plt.subplots(figsize=(10, 10))
-        ax.imshow(img)
-        if gt_xs:
-            ax.plot(gt_xs, gt_ys, color="lime", linewidth=3, linestyle="--", label="GT (safety-corrected)", zorder=4)
-        if pre_xs:
-            ax.plot(pre_xs, pre_ys, color="blue", linewidth=2, label="pretrained (before)", zorder=5)
-        if ft_xs:
-            ax.plot(ft_xs, ft_ys, color="red", linewidth=2, label="fine-tuned (after)", zorder=6)
-        ax.legend(loc="upper right")
-        ax.set_title(scene)
-        out_path = os.path.join(OUT_DIR, f"{scene}_compare.png")
+        fig.suptitle(scene, fontsize=14)
+        out_path = os.path.join(OUT_DIR, f"{scene}_gradient.png")
+        plt.tight_layout()
         plt.savefig(out_path)
         plt.close()
         print(f"저장: {out_path}")
 
-    print(f"\n완료: {len(val_indices)}개 비교 이미지 -> {OUT_DIR}/")
+    print(f"\n완료: {len(val_indices)}개 -> {OUT_DIR}/")
 
 
 if __name__ == "__main__":

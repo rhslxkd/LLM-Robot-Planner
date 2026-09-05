@@ -30,7 +30,7 @@ def run_neural_astar_step(scene, goal_x, goal_y, ckpt_override=None, timeout=120
     if ckpt_override:
         env["NEURAL_ASTAR_CKPT_OVERRIDE"] = ckpt_override
     cmd = ["conda", "run", "-n", NEURAL_ASTAR_ENV, "--no-capture-output",
-           "python", "run_neural_astar_step.py",
+           "python", "core/run_neural_astar_step.py",
            "--scene", scene, "--goal-x", str(goal_x), "--goal-y", str(goal_y)]
     try:
         proc = subprocess.run(cmd, cwd=REPO, timeout=timeout, capture_output=True, text=True, env=env)
@@ -67,7 +67,7 @@ def main():
             f.write(xml)
 
         env = {**os.environ, "MUJOCO_GL": "egl"}
-        render_proc = subprocess.run(["python", "oracle_gen.py", f"{scene}.xml"],
+        render_proc = subprocess.run(["python", "core/oracle_gen.py", f"{scene}.xml"],
                                       cwd=REPO, capture_output=True, text=True, timeout=60, env=env)
         image_path = f"data/{scene}/oracle.png"
         if not os.path.exists(image_path):

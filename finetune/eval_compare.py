@@ -9,6 +9,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, random_split
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
 import run_neural_astar_step as nas
 
 from neural_astar.planner import NeuralAstar, VanillaAstar
