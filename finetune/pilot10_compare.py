@@ -3,8 +3,14 @@
 (Neural A* -> waypoint_generator 보정) pretrained/fine-tuned 체크포인트 각각으로
 raw proposal을 뽑고, GT(=pretrained proposal을 보정한 안전경로)와 3-way 비교.
 vlm_court env에서 실행 (run_random_batch_v2.py와 동일 환경).
+
+--ckpt-tag로 어떤 fine-tuned 체크포인트(finetune/checkpoints/{tag}/)를 볼지 선택.
+결과는 finetune/verify/pilot_{tag}/ 밑에 저장돼서 eval_compare.py의
+finetune/verify/{tag}/ 결과와 안 섞인다.
+
+사용: python finetune/pilot10_compare.py --ckpt-tag combined
 """
-import os, sys, subprocess, json, random, shutil
+import os, sys, argparse, subprocess, json, random, shutil
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -12,6 +18,7 @@ import matplotlib.image as mpimg
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root (파일 위치 기준 자동 계산, 컴퓨터마다 안전)
 sys.path.insert(0, REPO)
+sys.path.insert(0, os.path.join(REPO, "core"))  # core/ 이동 후 누락돼있던 sys.path (이번에 같이 수정)
 os.chdir(REPO)
 from waypoint_generator import generate_waypoints
 from generate_random_baffle_maze import generate as generate_slalom, generate_boxes
@@ -19,8 +26,6 @@ from generate_random_baffle_maze import generate as generate_slalom, generate_bo
 ROBOT_PX = (421.0, 540.0)
 PPM = 150.0
 NEURAL_ASTAR_ENV = "neural-astar"
-FINETUNED_CKPT_DIR = os.path.join(REPO, "finetune/checkpoints")
-OUT_DIR = os.path.join(REPO, "finetune/verify")
 N_SCENES = 10
 SEED_BASE = 90000  # 기존 배치(0~299)와 절대 안 겹치는 범위
 
@@ -53,7 +58,16 @@ def to_px(coords):
 
 
 def main():
-    os.makedirs(OUT_DIR, exist_ok=True)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt-tag", type=str, default="v2",
+                         help="비교할 fine-tuned 체크포인트 이름표 (finetune/checkpoints/{tag}/)")
+    args = parser.parse_args()
+    tag = args.ckpt_tag
+    finetuned_ckpt_dir = os.path.join(REPO, "finetune/checkpoints", tag)
+    out_dir = os.path.join(REPO, "finetune/verify", f"pilot_{tag}")
+    print(f"[pilot10_compare] ckpt_tag={tag}  ckpt={finetuned_ckpt_dir}  -> {out_dir}")
+
+    os.makedirs(out_dir, exist_ok=True)
     results = []
     for i in range(N_SCENES):
         seed = SEED_BASE + i
@@ -78,7 +92,7 @@ def main():
         if pretrained_proposal is None:
             print("  ⚠️ pretrained 추론 실패, 스킵"); continue
 
-        finetuned_proposal = run_neural_astar_step(scene, goal_x, goal_y, ckpt_override=FINETUNED_CKPT_DIR)
+        finetuned_proposal = run_neural_astar_step(scene, goal_x, goal_y, ckpt_override=finetuned_ckpt_dir)
         if finetuned_proposal is None:
             print("  ⚠️ fine-tuned 추론 실패, 스킵"); continue
 
@@ -94,16 +108,16 @@ def main():
         ax.imshow(img)
         ax.plot(gt_xs, gt_ys, color="lime", linewidth=3, linestyle="--", label="GT (safety-corrected)", zorder=4)
         ax.plot(pre_xs, pre_ys, color="blue", linewidth=2, label="pretrained (before)", zorder=5)
-        ax.plot(ft_xs, ft_ys, color="red", linewidth=2, label="fine-tuned (after)", zorder=6)
+        ax.plot(ft_xs, ft_ys, color="red", linewidth=2, label=f"fine-tuned [{tag}]", zorder=6)
         ax.legend(loc="upper right")
-        ax.set_title(f"{scene}  passed={passed}")
-        out_path = os.path.join(OUT_DIR, f"{scene}_pilot.png")
+        ax.set_title(f"{scene}  passed={passed}  (ckpt_tag={tag})")
+        out_path = os.path.join(out_dir, f"{scene}_pilot.png")
         plt.savefig(out_path)
         plt.close()
         print(f"  저장: {out_path}")
         results.append(scene)
 
-    print(f"\n완료: {len(results)}/{N_SCENES}개 -> {OUT_DIR}/")
+    print(f"\n완료: {len(results)}/{N_SCENES}개 -> {out_dir}/")
 
 
 if __name__ == "__main__":

@@ -1,33 +1,27 @@
 """
-val 8개 held-out 씬에서 GT(안전보정 경로) vs 사전학습 모델 vs fine-tuned 모델의
-raw Neural A* 출력 경로를 oracle.png 위에 겹쳐 그려서 시각 비교.
+사전학습 체크포인트 vs fine-tuned 체크포인트를 동일한 held-out val 씬에 돌려서
+loss / p_opt(최적경로 길이 일치율) / p_exp(탐색 효율) 비교.
+train.py와 완전히 동일한 random_split(seed=0) 사용 -> 정확히 같은 val 샘플.
+--tag로 어떤 학습 결과(dataset_{tag}.npz / checkpoints/{tag}/)를 검증할지 선택.
+
+사용: python finetune/verify_compare.py --tag combined
 """
-import os, sys
+import os, sys, argparse
 import numpy as np
 import torch
-from torch.utils.data import Dataset, random_split
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.image as mpimg
+from torch.utils.data import Dataset, DataLoader, random_split
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core"))
 import run_neural_astar_step as nas
 
-from neural_astar.planner import NeuralAstar
+from neural_astar.planner import NeuralAstar, VanillaAstar
 from neural_astar.utils.training import load_from_ptl_checkpoint
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO_ROOT = os.path.dirname(HERE)
-CACHE_PATH = os.path.join(HERE, "cache/dataset.npz")
-PRETRAINED_CKPT = os.path.join(REPO_ROOT, nas.CKPT_PATH)
-FINETUNED_CKPT = os.path.join(HERE, "checkpoints")
-OUT_DIR = os.path.join(HERE, "verify")
-
-GRID = nas.GRID
-grid_to_full = nas.grid_to_full
-extract_ordered_path = nas.extract_ordered_path
+PRETRAINED_CKPT = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), nas.CKPT_PATH
+)
 
 
 class SceneDataset(Dataset):
@@ -43,82 +37,62 @@ class SceneDataset(Dataset):
         return len(self.map_designs)
 
     def __getitem__(self, idx):
-        return idx
+        return (
+            torch.from_numpy(self.map_designs[idx]).float(),
+            torch.from_numpy(self.start_maps[idx]).float(),
+            torch.from_numpy(self.goal_maps[idx]).float(),
+            torch.from_numpy(self.opt_trajs[idx]).float(),
+        )
 
 
-def grid_path_to_px(mask_2d, start_grid, goal_grid, w, h):
-    wp_grid = extract_ordered_path(mask_2d, start_grid, goal_grid)
-    if not wp_grid:
-        return [], []
-    xs, ys = [], []
-    for gx, gy in wp_grid:
-        px, py = grid_to_full(gx, gy, w, h)
-        xs.append(px); ys.append(py)
-    return xs, ys
+def evaluate(model, loader):
+    vanilla = VanillaAstar()
+    model.eval()
+    losses, p_opts, p_exps = [], [], []
+    with torch.no_grad():
+        for map_designs, start_maps, goal_maps, opt_trajs in loader:
+            outputs = model(map_designs, start_maps, goal_maps)
+            loss = torch.nn.L1Loss()(outputs.histories, opt_trajs).item()
+
+            va_outputs = vanilla(map_designs, start_maps, goal_maps)
+            pathlen_astar = va_outputs.paths.sum((1, 2, 3)).numpy()
+            pathlen_model = outputs.paths.sum((1, 2, 3)).numpy()
+            p_opt = (pathlen_astar == pathlen_model).mean()
+
+            exp_astar = va_outputs.histories.sum((1, 2, 3)).numpy()
+            exp_na = outputs.histories.sum((1, 2, 3)).numpy()
+            p_exp = np.maximum((exp_astar - exp_na) / exp_astar, 0.0).mean()
+
+            losses.append(loss)
+            p_opts.append(p_opt)
+            p_exps.append(p_exp)
+    return np.mean(losses), np.mean(p_opts), np.mean(p_exps)
 
 
 def main():
-    full_ds = SceneDataset(CACHE_PATH)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tag", type=str, default="v2",
+                         help="검증할 학습 결과의 이름표 (build_dataset.py/train.py --tag와 일치)")
+    args = parser.parse_args()
+    tag = args.tag
+    cache_path = os.path.join(HERE, "cache", f"dataset_{tag}.npz")
+    finetuned_ckpt = os.path.join(HERE, "checkpoints", tag)
+    print(f"[verify_compare] tag={tag}  dataset={cache_path}  ckpt={finetuned_ckpt}")
+
+    full_ds = SceneDataset(cache_path)
     n_val = max(1, int(len(full_ds) * 0.1))
     n_train = len(full_ds) - n_val
     _, val_ds = random_split(
         full_ds, [n_train, n_val], generator=torch.Generator().manual_seed(0)
     )
-    val_indices = list(val_ds)
-    print(f"val 씬: {[full_ds.scenes[i] for i in val_indices]}")
+    val_loader = DataLoader(val_ds, batch_size=8, shuffle=False)
+    print(f"val set: {n_val}개 씬")
 
-    model_pre = NeuralAstar(g_ratio=0.5, encoder_arch="CNN")
-    model_pre.load_state_dict(load_from_ptl_checkpoint(PRETRAINED_CKPT))
-    model_pre.eval()
-
-    model_ft = NeuralAstar(g_ratio=0.5, encoder_arch="CNN")
-    model_ft.load_state_dict(load_from_ptl_checkpoint(FINETUNED_CKPT))
-    model_ft.eval()
-
-    os.makedirs(OUT_DIR, exist_ok=True)
-
-    for idx in val_indices:
-        scene = str(full_ds.scenes[idx])
-        oracle_path = os.path.join(REPO_ROOT, f"data/{scene}/oracle.png")
-        img = mpimg.imread(oracle_path)
-        h_img, w_img = img.shape[0], img.shape[1]
-
-        map_t = torch.from_numpy(full_ds.map_designs[idx]).float()[None]
-        start_t = torch.from_numpy(full_ds.start_maps[idx]).float()[None]
-        goal_t = torch.from_numpy(full_ds.goal_maps[idx]).float()[None]
-        opt_traj = full_ds.opt_trajs[idx][0]
-
-        start_grid = tuple(int(v) for v in np.argwhere(full_ds.start_maps[idx][0])[0][::-1])
-        goal_grid = tuple(int(v) for v in np.argwhere(full_ds.goal_maps[idx][0])[0][::-1])
-
-        with torch.no_grad():
-            out_pre = model_pre(map_t, start_t, goal_t)
-            out_ft = model_ft(map_t, start_t, goal_t)
-
-        mask_pre = (out_pre.paths[0, 0].numpy() > 0.5)
-        mask_ft = (out_ft.paths[0, 0].numpy() > 0.5)
-        mask_gt = (opt_traj > 0.5)
-
-        gt_xs, gt_ys = grid_path_to_px(mask_gt, start_grid, goal_grid, w_img, h_img)
-        pre_xs, pre_ys = grid_path_to_px(mask_pre, start_grid, goal_grid, w_img, h_img)
-        ft_xs, ft_ys = grid_path_to_px(mask_ft, start_grid, goal_grid, w_img, h_img)
-
-        fig, ax = plt.subplots(figsize=(10, 10))
-        ax.imshow(img)
-        if gt_xs:
-            ax.plot(gt_xs, gt_ys, color="lime", linewidth=3, linestyle="--", label="GT (safety-corrected)", zorder=4)
-        if pre_xs:
-            ax.plot(pre_xs, pre_ys, color="blue", linewidth=2, label="pretrained (before)", zorder=5)
-        if ft_xs:
-            ax.plot(ft_xs, ft_ys, color="red", linewidth=2, label="fine-tuned (after)", zorder=6)
-        ax.legend(loc="upper right")
-        ax.set_title(scene)
-        out_path = os.path.join(OUT_DIR, f"{scene}_compare.png")
-        plt.savefig(out_path)
-        plt.close()
-        print(f"저장: {out_path}")
-
-    print(f"\n완료: {len(val_indices)}개 비교 이미지 -> {OUT_DIR}/")
+    for label, ckpt_path in [("사전학습 (fine-tune 전)", PRETRAINED_CKPT), (f"fine-tuned [{tag}]", finetuned_ckpt)]:
+        model = NeuralAstar(g_ratio=0.5, encoder_arch="CNN")
+        model.load_state_dict(load_from_ptl_checkpoint(ckpt_path))
+        loss, p_opt, p_exp = evaluate(model, val_loader)
+        print(f"[{label}] loss={loss:.5f}  p_opt={p_opt:.3f}  p_exp={p_exp:.3f}")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,16 @@
 """
-100개 랜덤배치 씬 -> Neural A* fine-tuning용 (map, start, goal, opt_traj) npz 캐시 빌드.
+manifest CSV에 성공(generator_passed=True, dial_mpc_ok=True)으로 기록된 씬들을
+모아 Neural A* fine-tuning용 (map, start, goal, opt_traj) npz 캐시로 빌드한다.
 run_neural_astar_step.py의 좌표변환(full_to_grid)/그리드 로직을 그대로 재사용해서
 추론 파이프라인과 좌표계가 절대 어긋나지 않도록 함.
+
+--manifest/--tag로 어떤 manifest를 어떤 이름표(tag)로 캐싱할지 선택한다.
+같은 tag로 다시 돌리면 항상 같은 파일을 덮어쓰고(멱등), 다른 tag의 결과와는
+절대 안 섞인다 -- finetune/cache/dataset_{tag}.npz + dataset_{tag}.meta.json.
+
+사용: python finetune/build_dataset.py --manifest data/random_batch_manifest_combined.csv --tag combined
 """
-import sys, os, csv, json
+import sys, os, csv, json, argparse, time
 from collections import Counter
 import numpy as np
 from PIL import Image
@@ -13,9 +20,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import run_neural_astar_step as nas  # GRID, ROBOT_PX, PPM, full_to_grid, CKPT_PATH 재사용
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MANIFEST = os.path.join(REPO_ROOT, "data/random_batch_manifest_v2.csv")
+DEFAULT_MANIFEST = os.path.join(REPO_ROOT, "data/random_batch_manifest_v2.csv")
 VARIANT = "waypoint_gen_v1"
-OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache/dataset.npz")
+CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache")
 
 GRID = nas.GRID
 ROBOT_PX = nas.ROBOT_PX
@@ -87,7 +94,19 @@ def rasterize_path(grid_pts):
 
 
 def main():
-    with open(MANIFEST) as f:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", type=str, default=DEFAULT_MANIFEST,
+                         help="사용할 manifest CSV 경로 (기본값: v2)")
+    parser.add_argument("--tag", type=str, default="v2",
+                         help="이 데이터셋의 이름표. finetune/cache/dataset_{tag}.npz로 저장됨")
+    args = parser.parse_args()
+    manifest_path = args.manifest
+    tag = args.tag
+    out_path = os.path.join(CACHE_DIR, f"dataset_{tag}.npz")
+    meta_path = os.path.join(CACHE_DIR, f"dataset_{tag}.meta.json")
+    print(f"[build_dataset] tag={tag}  manifest={manifest_path}  -> {out_path}")
+
+    with open(manifest_path) as f:
         rows = list(csv.DictReader(f))
 
     included, skipped = [], []
@@ -125,22 +144,33 @@ def main():
         included.append(scene)
 
     print(f"포함: {len(included)}개, 스킵: {len(skipped)}개")
+    skip_counts = dict(Counter(r for _, r in skipped))
     if skipped:
-        print(f"  스킵 사유: {dict(Counter(r for _, r in skipped))}")
+        print(f"  스킵 사유: {skip_counts}")
     if not included:
         print("ERROR: 포함된 샘플이 0개 - manifest/경로 확인 필요")
         sys.exit(1)
 
-    os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
+    os.makedirs(CACHE_DIR, exist_ok=True)
     np.savez(
-        OUT_PATH,
+        out_path,
         map_designs=np.stack(map_list)[:, None, :, :],
         start_maps=np.stack(start_list)[:, None, :, :],
         goal_maps=np.stack(goal_list)[:, None, :, :],
         opt_trajs=np.stack(traj_list)[:, None, :, :],
         scenes=np.array(scene_list),
     )
-    print(f"저장 완료: {OUT_PATH} ({len(included)} samples, shape={map_list[0].shape})")
+    with open(meta_path, "w") as f:
+        json.dump({
+            "tag": tag,
+            "manifest": manifest_path,
+            "n_included": len(included),
+            "n_skipped": len(skipped),
+            "skip_reasons": skip_counts,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        }, f, indent=2)
+    print(f"저장 완료: {out_path} ({len(included)} samples, shape={map_list[0].shape})")
+    print(f"메타 저장: {meta_path}")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,12 @@
 """
-Neural A* 인코더가 예측하는 cost map(모델이 각 셀을 얼마나 위험하다고 보는지)과
-histories(실제 탐색이 퍼진 영역)를 oracle.png 위에 겹쳐서 pretrained vs fine-tuned 비교.
-diff(fine-tuned - pretrained)까지 같이 그려서 코너(꺾이는 지점)에서 뭐가 바뀌었는지 진단.
+val held-out 씬에서 Neural A* 인코더가 예측하는 cost map과 histories를
+pretrained vs fine-tuned 비교. diff(fine-tuned - pretrained)까지 같이 그려서
+코너(꺾이는 지점)에서 뭐가 바뀌었는지 진단.
+--tag로 어떤 학습 결과를 볼지 선택. 결과는 finetune/gradient_maps/{tag}/ 밑에 저장.
+
+사용: python finetune/visualize_gradient.py --tag combined
 """
-import os, sys
+import os, sys, argparse
 import numpy as np
 import torch
 from torch.utils.data import Dataset, random_split
@@ -21,10 +24,7 @@ from neural_astar.utils.training import load_from_ptl_checkpoint
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
-CACHE_PATH = os.path.join(HERE, "cache/dataset.npz")
 PRETRAINED_CKPT = os.path.join(REPO_ROOT, nas.CKPT_PATH)
-FINETUNED_CKPT = os.path.join(HERE, "checkpoints")
-OUT_DIR = os.path.join(HERE, "gradient_maps")
 
 
 class SceneDataset(Dataset):
@@ -49,7 +49,16 @@ def upsample(arr32, h_img, w_img):
 
 
 def main():
-    full_ds = SceneDataset(CACHE_PATH)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--tag", type=str, default="v2")
+    args = parser.parse_args()
+    tag = args.tag
+    cache_path = os.path.join(HERE, "cache", f"dataset_{tag}.npz")
+    finetuned_ckpt = os.path.join(HERE, "checkpoints", tag)
+    out_dir = os.path.join(HERE, "gradient_maps", tag)
+    print(f"[visualize_gradient] tag={tag}  dataset={cache_path}  ckpt={finetuned_ckpt}  -> {out_dir}")
+
+    full_ds = SceneDataset(cache_path)
     n_val = max(1, int(len(full_ds) * 0.1))
     n_train = len(full_ds) - n_val
     _, val_ds = random_split(
@@ -63,10 +72,10 @@ def main():
     model_pre.eval()
 
     model_ft = NeuralAstar(g_ratio=0.5, encoder_arch="CNN")
-    model_ft.load_state_dict(load_from_ptl_checkpoint(FINETUNED_CKPT))
+    model_ft.load_state_dict(load_from_ptl_checkpoint(finetuned_ckpt))
     model_ft.eval()
 
-    os.makedirs(OUT_DIR, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
     for idx in val_indices:
         scene = str(full_ds.scenes[idx])
@@ -96,7 +105,7 @@ def main():
             diff = ft - pre
             for c, (title, arr, cmap, vlim) in enumerate([
                 (f"pretrained {label}", pre, "jet", None),
-                (f"fine-tuned {label}", ft, "jet", None),
+                (f"fine-tuned [{tag}] {label}", ft, "jet", None),
                 (f"diff (ft - pre) {label}", diff, "bwr", np.abs(diff).max() + 1e-6),
             ]):
                 ax = axes[r, c]
@@ -109,14 +118,14 @@ def main():
                 ax.set_title(title, fontsize=10)
                 plt.colorbar(im, ax=ax, fraction=0.046)
 
-        fig.suptitle(scene, fontsize=14)
-        out_path = os.path.join(OUT_DIR, f"{scene}_gradient.png")
+        fig.suptitle(f"{scene}  (tag={tag})", fontsize=14)
+        out_path = os.path.join(out_dir, f"{scene}_gradient.png")
         plt.tight_layout()
         plt.savefig(out_path)
         plt.close()
         print(f"저장: {out_path}")
 
-    print(f"\n완료: {len(val_indices)}개 -> {OUT_DIR}/")
+    print(f"\n완료: {len(val_indices)}개 -> {out_dir}/")
 
 
 if __name__ == "__main__":
