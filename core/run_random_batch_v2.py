@@ -8,7 +8,7 @@ Neural A* 재학습용 데이터셋 목적). scene 접두사는 기존 R000~R015
 파일럿: python run_random_batch_v2.py --n-scenes 5 --start-seed 0
 DIAL-MPC까지 돌리려면: python run_random_batch_v2.py --n-scenes 5 --start-seed 0 --run-dial
 """
-import os, sys, csv, time, subprocess, argparse, shutil, glob, json, random
+import os, sys, csv, time, subprocess, argparse, shutil, glob, json, random, math
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -229,8 +229,6 @@ def main():
 
             with open(f"dial_mpc/dial_mpc/models/unitree_go2/{scene}.xml", "w") as f:
                 f.write(xml)
-            with open(f"dial_mpc/dial_mpc/examples/{scene}.yaml", "w") as f:
-                f.write(YAML_TEMPLATE.format(scene=scene, n_steps=args.n_steps))
             print(f"  씬 생성 완료 layout={layout} goal=({goal_x:.2f},{goal_y:.2f}) n_obstacles={n_obstacles}")
 
             env = {**os.environ, "MUJOCO_GL": "egl"}
@@ -265,6 +263,23 @@ def main():
                 writer.writerow([scene, layout, goal_x, goal_y, n_obstacles, True, False, len(final_coords), "", time.time()-t0]); mf.flush()
                 continue
 
+            # 2026-09-11: n_steps를 고정값 대신 실제 경로 길이 기반으로 씬마다 계산.
+            # cruise_speed=0.8m/s, dt=0.02s는 unitree_go2_env.py 실측 상수와 동일.
+            # safety_factor=1.4는 코너 감속 등 여유분. [150,800] 범위로 clip (800=기존 상한 유지,
+            # E9000 충돌씬 재현 테스트에서 first_collision_step=159 < 263(축소값)로 안전마진 확인됨).
+            # final_coords의 x,y는 이미 미터 단위 (waypoint_generator.py의 to_px 변환식
+            # `rx + c["x"]*ppm` 참고 -- c["x"]가 px였으면 여기서 다시 *ppm 하는 게 말이 안 됨).
+            # PPM으로 또 나누면 안 됨 (2026-09-11: 첫 패치에서 이 실수로 path_length가
+            # 150배 축소되어 n_steps가 전부 하한(150)으로 깔리는 버그 있었음, 파일럿에서 적발).
+            path_length_m = sum(
+                math.dist((final_coords[i]["x"], final_coords[i]["y"]), (final_coords[i + 1]["x"], final_coords[i + 1]["y"]))
+                for i in range(len(final_coords) - 1)
+            )
+            scene_n_steps = int(math.ceil(min(max(path_length_m / 0.8 / 0.02 * 1.4, 150), 800)))
+            print(f"  n_steps 자동계산: path_length={path_length_m:.2f}m -> n_steps={scene_n_steps} (기존 고정값={args.n_steps})")
+            with open(f"dial_mpc/dial_mpc/examples/{scene}.yaml", "w") as f:
+                f.write(YAML_TEMPLATE.format(scene=scene, n_steps=scene_n_steps))
+
             dst = f"data/{scene}/last_judged_path.json"
             shutil.copy(f"{out_dir}/last_judged_path.json", dst)
 
@@ -273,7 +288,7 @@ def main():
                 writer.writerow([scene, layout, goal_x, goal_y, n_obstacles, True, True, len(final_coords), "skipped", time.time()-t0]); mf.flush()
                 continue
 
-            ok, info = run_dial_mpc(scene, args.n_steps)
+            ok, info = run_dial_mpc(scene, scene_n_steps)
             print(f"  DIAL-MPC: {'성공' if ok else '실패: ' + str(info)}")
             writer.writerow([scene, layout, goal_x, goal_y, n_obstacles, True, True, len(final_coords), ok, time.time()-t0]); mf.flush()
 
