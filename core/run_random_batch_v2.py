@@ -118,7 +118,28 @@ def run_dial_mpc(scene, n_steps, timeout=None):
     except subprocess.TimeoutExpired:
         return False, "hard timeout"
     produced = glob.glob(f"{out_dir}/*_states.npy")
-    return len(produced) > 0, (proc.stderr[-500:] if proc.returncode != 0 else "ok")
+    if not produced:
+        return False, (proc.stderr[-500:] if proc.returncode != 0 else "no states.npy produced")
+
+    # 2026-09-10: 파일 생성 여부만으로 성공 판정하던 걸 개선 -- DIAL-MPC 물리엔진이
+    # 로봇 몸통-장애물 충돌에 실질적으로 반응하지 않는다는 게 실측 확인되어(최대
+    # 53cm 침투, NO FALL로 잘못 통과할 위험), check_fall.py의 낙상+충돌 이중 게이트를
+    # 통과해야만 dial_mpc_ok=True로 기록한다.
+    latest_states = max(produced, key=os.path.getmtime)
+    try:
+        from check_fall import check_scene_safety
+        safety = check_scene_safety(latest_states, verbose=False)
+    except Exception as e:
+        return False, f"safety check error: {e!r}"
+
+    if safety["safe"]:
+        return True, "ok"
+    reasons = []
+    if safety["fell"]:
+        reasons.append(f"fell@step{safety['fall_step']}")
+    if safety["collision_detected"] is True:
+        reasons.append(f"collision(min_clearance={safety['min_clearance_m']:.3f}m)")
+    return False, (", ".join(reasons) if reasons else "unsafe")
 
 
 def main():
