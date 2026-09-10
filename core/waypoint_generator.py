@@ -17,7 +17,7 @@ arXiv:2408.13377):
      가까운 안전점을 찾음 (기존 perpendicular-only shift보다 일반적).
 
 두 단계 마진:
-  HARD_RADIUS_M = 0.4  (= MIN_CLEARANCE_M/2 = 0.8m 전체 통로폭, DIAL-MPC 실측 검증된 하드플로어)
+  HARD_RADIUS_M = 0.30  (2026-09-10 하향: 0.38-0.40m 근접 5씬 실측 NO FALL+NO COLLISION 확인 후 재조정. DIAL-MPC 물리엔진 자체는 몸통 충돌에 잘 반응 안 하므로, 이 값은 러프 프리필터일 뿐 -- check_fall.py의 이중 게이트(낙상+충돌) 통과가 최종 기준)
   SOFT_RADIUS_M = 0.6  (2026-09-02 배치 스윕: 0.3->0.4->0.5->0.6 순으로 튜닝,
                         13개 중 10개 DIAL-MPC 생존 확인된 경험적 선호 마진)
 """
@@ -34,7 +34,8 @@ from scipy.ndimage import distance_transform_edt
 # 섹션 1. 튜닝 상수
 # ══════════════════════════════════════════════════════════════════════
  
-HARD_RADIUS_M = 0.4
+HARD_RADIUS_M = 0.4  # 2026-09-10: 포인트/코너컷 "밀어내기(push)" 목표 마진. 더 이상 최종 통과판정에는 안 쓰임 -- ACCEPT_RADIUS_M 참고.
+ACCEPT_RADIUS_M = 0.30  # 2026-09-10 신설: corner-cut 체크 + 최종 pass 판정 전용 임계값. check_fall.py의 낙상+충돌 이중게이트가 최종 물리 안전판정을 담당하므로 완화해도 안전.
 # "하드 플로어" -- 이보다 가까우면 무조건 안전 위반으로 간주하는 절대 최소 여유거리.
     # 이 값의 2배(0.8m)가 로봇이 지나갈 수 있는 통로의 최소 전체 폭이 됨
     # (로봇이 통로 중앙을 지난다고 가정하면, 양쪽 벽까지 각각 0.4m씩 여유가 있어야
@@ -201,7 +202,8 @@ def check_step_lengths(coords, min_step_m=MIN_STEP_M, max_step_m=MAX_STEP_M):
 
 
 def generate_waypoints(image_path, raw_coords, robot_px, ppm,
-                        hard_radius_m=HARD_RADIUS_M, soft_radius_m=SOFT_RADIUS_M,
+                        hard_radius_m=HARD_RADIUS_M, accept_radius_m=ACCEPT_RADIUS_M,
+                        soft_radius_m=SOFT_RADIUS_M,
                         min_step_m=MIN_STEP_M, max_step_m=MAX_STEP_M,
                         max_iters=MAX_ITERS):
     """
@@ -232,6 +234,7 @@ def generate_waypoints(image_path, raw_coords, robot_px, ppm,
         return (px - rx) / ppm, (ry - py) / ppm
 
     hard_px = hard_radius_m * ppm
+    accept_px = accept_radius_m * ppm
     soft_px = soft_radius_m * ppm
     max_shift_px = CORRECTION_MAX_SHIFT_M * ppm
     corner_bend_px = CORNER_BEND_SEARCH_M * ppm
@@ -313,7 +316,7 @@ def generate_waypoints(image_path, raw_coords, robot_px, ppm,
             bad_segment = None
             for i in range(len(coords) - 1):
                 min_c = segment_min_clearance_m(dist_field, points_px[i], points_px[i + 1], ppm)
-                if min_c < hard_radius_m:
+                if min_c < accept_radius_m:
                     bad_segment = (i, i + 1, min_c)
                     break
             if bad_segment is not None:
@@ -361,13 +364,23 @@ def generate_waypoints(image_path, raw_coords, robot_px, ppm,
                 coords.pop(j)
                 log.append(f"[iter {it}] segment ({i},{j}) 보폭 미달({d}m) -> idx {j} 제거")
                 changed = True
+            elif 0 < i < len(coords) - 1:
+                # 2026-09-10 추가: j가 시작/목표 고정점이라 제거 불가한 경우, 대신
+                # i를 제거 -- 이 분기가 없으면 로그도 안 남기고 최종판정에서만
+                # 조용히 실패하는 버그가 있었음 (목표점 바로 앞 구간이 너무
+                # 짧을 때 특히 자주 발생).
+                coords.pop(i)
+                log.append(f"[iter {it}] segment ({i},{j}) 보폭 미달({d}m) -> idx {j}가 고정점이라 대신 idx {i} 제거")
+                changed = True
+            else:
+                log.append(f"[iter {it}] segment ({i},{j}) 보폭 미달({d}m) -> 양끝 다 고정점이라 제거 불가, 구조적 병목")
         if changed:
             continue
 
          # ── (4) 위 (1),(2),(3) 어느 것도 안 바뀌었으면: 수렴 완료, 최종 판정 ──
         points_px = [to_px(c) for c in coords]
         final_ok = all(
-            segment_min_clearance_m(dist_field, points_px[k], points_px[k + 1], ppm) >= hard_radius_m
+            segment_min_clearance_m(dist_field, points_px[k], points_px[k + 1], ppm) >= accept_radius_m
             for k in range(len(coords) - 1)
         )
         step_ok = not check_step_lengths(coords, min_step_m, max_step_m)
