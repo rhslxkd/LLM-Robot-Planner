@@ -51,6 +51,9 @@ class VLMAgent(ABC):
         self.gemini_model = gemini_model
         self.openai_model = openai_model
         self.memory: List[Message] = []
+        # 호출 로그 (표 ①의 '계획 비용' 열: 호출 수, 토큰, 지연시간). run_ablation.py가 읽는다.
+        self.call_log: List[Dict[str, Any]] = []
+        self._last_usage: Dict[str, Any] = {}
 
         if backend == "gemini":
             # gemini_model이 지정되면 4개 에이전트 전부 동일 모델로 통일(공정 비교용).
@@ -85,18 +88,40 @@ class VLMAgent(ABC):
         pass
 
     def generate_response(self, prompt: str, image_path: Optional[str] = None) -> str:
-        """VLM 호출 진입점. backend에 따라 Gemini/Ollama/OpenAI로 분기."""
+        """VLM 호출 진입점. backend에 따라 Gemini/Ollama/OpenAI로 분기. 호출마다 call_log에 기록."""
+        import time
+        self._last_usage = {}
+        t0 = time.perf_counter()
         if self.backend == "gemini":
-            return self._generate_gemini(prompt, image_path)
+            text = self._generate_gemini(prompt, image_path)
         elif self.backend == "ollama":
-            return self._generate_ollama(prompt, image_path)
+            text = self._generate_ollama(prompt, image_path)
         elif self.backend == "openai":
-            return self._generate_openai(prompt, image_path)
+            text = self._generate_openai(prompt, image_path)
         else:
-            return f"Error: unknown backend {self.backend!r}"
+            text = f"Error: unknown backend {self.backend!r}"
+        self.call_log.append({
+            "t_start": time.time() - (time.perf_counter() - t0),
+            "agent": self.name,
+            "backend": self.backend,
+            "model": self.gemini_model or self.ollama_model or self.openai_model,
+            "with_image": bool(image_path),
+            "latency_s": round(time.perf_counter() - t0, 3),
+            "api_error": isinstance(text, str) and text.startswith("Error"),
+            **self._last_usage,
+        })
+        return text
 
-    def _generate_gemini(self, prompt: str, image_path: Optional[str] = None) -> str:
-        """기존 Vertex AI(Gemini) 호출 로직 — 변경 없음."""
+    # 일시적 오류로 보고 재시도할 메시지 조각 (429 할당량, 5xx, 타임아웃)
+    _TRANSIENT = ("429", "500", "502", "503", "504", "Resource exhausted", "RESOURCE_EXHAUSTED",
+                  "UNAVAILABLE", "Unavailable", "DEADLINE_EXCEEDED", "Deadline", "temporarily",
+                  "Connection", "connection")
+
+    def _generate_gemini(self, prompt: str, image_path: Optional[str] = None,
+                         max_retries: int = 5, base_delay: float = 5.0) -> str:
+        """Vertex AI(Gemini) 호출. 프롬프트·이미지 구성은 기존과 동일.
+        추가: 일시적 오류(429/5xx/타임아웃)는 지수 백오프로 재시도, 토큰 사용량 기록."""
+        import time
         try:
             from vertexai.generative_models import Part
 
@@ -110,11 +135,31 @@ class VLMAgent(ABC):
 
                 image_part = Part.from_data(data=image_data, mime_type=mime_type)
                 contents.append(image_part)
-
-            response = self.model.generate_content(contents)
-            return response.text
         except Exception as e:
             return f"Error generating response: {e}"
+
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.model.generate_content(contents)
+                um = getattr(response, "usage_metadata", None)
+                self._last_usage = {
+                    "prompt_tokens": getattr(um, "prompt_token_count", None),
+                    "output_tokens": getattr(um, "candidates_token_count", None),
+                    "thinking_tokens": getattr(um, "thoughts_token_count", None),
+                    "retries": attempt,
+                }
+                return response.text
+            except Exception as e:
+                last_error = e
+                transient = any(k in str(e) for k in self._TRANSIENT)
+                if not transient or attempt == max_retries:
+                    break
+                delay = base_delay * (2 ** attempt)
+                print(f"[{self.name}] ⚠️ Gemini 일시적 오류 (시도 {attempt + 1}/{max_retries + 1}): {e} -> {delay:.0f}초 후 재시도")
+                time.sleep(delay)
+        self._last_usage = {"retries": max_retries}
+        return f"Error generating response: {last_error}"
 
     def _generate_ollama(self, prompt: str, image_path: Optional[str] = None) -> str:
         """Ollama 로컬 서버(/api/generate) 호출. Vision 입력은 base64 인코딩된

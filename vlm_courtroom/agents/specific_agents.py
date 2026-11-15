@@ -109,6 +109,49 @@ class CoordinateAgent(VLMAgent):
 
         return Message(self.name, response_text, "coordinate_proposal")
 
+    def revise(self, context: Dict[str, Any]) -> Message:
+        """
+        표 ① ablation 전용 (C2: +검사, C3: +검사+변호). 판사가 없는 구성에서는 제안자 자신이
+        비판(과 변론)을 읽고 최종 경로를 정한다. 기존 4-agent 흐름(C4)에서는 호출되지 않는다.
+        """
+        print(f"[{self.name}] Revising proposal...")
+        image_path = context.get('image_path')
+        image_description = context.get('image_description', 'A scene with obstacles.')
+        num_waypoints = context.get('num_waypoints', 10)
+        proposal = context.get('original_proposal', '')
+        prosecution = context.get('prosecution_argument', '')
+        defense = context.get('defense_argument')
+        defense_block = f"""
+        Defense Rebuttal: {defense}""" if defense else ""
+
+        prompt = f"""
+        You are a robot navigation assistant revising your own path proposal.
+        Analyze the scene (image or description provided): {image_description}
+        {ROBOT_PHYSICAL_CONSTRAINTS}
+        Your Previous Proposal: {proposal}
+        Prosecution Critique: {prosecution}{defense_block}
+
+        Task:
+        1. Check each concern against the image and the constraints above, and decide which are valid.
+        2. Revise the path only where a valid concern requires it.
+        3. Generate EXACTLY {num_waypoints} sequential (x, y) coordinates for the FINAL path.
+           This number ({num_waypoints}) is not optional -- the output list MUST contain exactly {num_waypoints} points.
+
+        Output Format:
+        ## Revision Logic
+        (Which concerns you accepted or rejected, and why)
+
+        ## Coordinates
+        (Return the JSON list here)
+        ```json
+        [{{"x": 1.0, "y": 2.0}}, {{"x": 3.5, "y": 4.2}}]
+        ```
+
+        Please respond in Korean, but keep the JSON strictly in English/Numeric format.
+        """
+        response_text = self.generate_response(prompt, image_path=image_path)
+        return Message(self.name, response_text, "revised_proposal")
+
 
 class ProsecutorAgent(VLMAgent):
     def __init__(self, name="ProsecutorAgent", **kwargs):
@@ -135,7 +178,7 @@ class ProsecutorAgent(VLMAgent):
         Please respond in Korean.
         """
         
-        response_text = self.generate_response(prompt)
+        response_text = self.generate_response(prompt, image_path=context.get('image_path'))
         return Message(self.name, response_text, "argument_prosecution")
 
 
@@ -166,7 +209,7 @@ class DefenseAttorneyAgent(VLMAgent):
         Please respond in Korean.
         """
         
-        response_text = self.generate_response(prompt)
+        response_text = self.generate_response(prompt, image_path=context.get('image_path'))
         return Message(self.name, response_text, "argument_defense")
 
 
@@ -203,5 +246,5 @@ class JudgeAgent(VLMAgent):
         Please respond in Korean, but keep the JSON strictly in English/Numeric format.
         """
         
-        response_text = self.generate_response(prompt)
+        response_text = self.generate_response(prompt, image_path=context.get('image_path'))
         return Message(self.name, response_text, "verdict")
