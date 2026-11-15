@@ -58,9 +58,31 @@ def load_export(export_dir: str) -> tuple[dict, np.ndarray, OccGrid]:
     occ = np.flipud(occ_png)                              # PNG 맨 위 = y_max → grid 행 r은 y 증가 방향
     assert occ.shape == (meta["occ_h"], meta["occ_w"]), f"occupancy 크기 {occ.shape} != meta"
     cell = float(meta["cell_m"])
-    grid = OccGrid(occ, cell, (meta["x_min"] + cell / 2, meta["y_min"] + cell / 2))
+    origin = (meta["x_min"] + cell / 2, meta["y_min"] + cell / 2)
+    occ, n_filled = fill_enclosed(occ, cell, origin, [(0.0, 0.0), tuple(meta["goal"])])
+    meta["n_filled_cells"] = n_filled
+    grid = OccGrid(occ, cell, origin)
     assert bev.shape[:2] == (meta["img_h"], meta["img_w"]), f"bev 크기 {bev.shape} != meta"
     return meta, bev, grid
+
+
+def fill_enclosed(occ: np.ndarray, cell: float, origin, keep_xy) -> tuple[np.ndarray, int]:
+    """가구 내부의 빈 주머니를 장애물로 채운다.
+
+    Unity의 Physics.CheckBox는 오목한 MeshCollider의 '표면'만 잡아서, 의자·수납장이 테두리만 점유로 나온다.
+    지도 경계에 닿지 않고 시작/목표를 포함하지 않는 빈 영역(= 장애물로 완전히 둘러싸인 곳)만 채우므로,
+    벽으로 둘러싸인 방 내부(시작점 포함)나 방 바깥(경계에 닿음)은 그대로 둔다.
+    """
+    from scipy import ndimage
+    lab, n = ndimage.label(~occ)                          # 4-연결 빈 영역
+    keep = set(np.unique(np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]])))
+    H, W = occ.shape
+    for x, y in keep_xy:
+        c, r = int(round((x - origin[0]) / cell)), int(round((y - origin[1]) / cell))
+        if 0 <= r < H and 0 <= c < W:
+            keep.add(int(lab[r, c]))
+    fill = ~occ & ~np.isin(lab, list(keep))
+    return occ | fill, int(fill.sum())
 
 
 def coarsen(grid: OccGrid, cell: float) -> OccGrid:
@@ -246,6 +268,10 @@ def build(export_dir: str, mj_cell: float | None = None, overwrite: bool = True)
         warnings.append("목표점 반경 0.2 m 안에 장애물이 있음")
     if not grid.occ.any():
         warnings.append("점유 셀이 0개 (Collider/레이어/Band 확인)")
+    if not (meta["x_min"] + 0.5 <= goal[0] <= meta["x_max"] - 0.5 and meta["y_min"] + 0.5 <= goal[1] <= meta["y_max"] - 0.5):
+        warnings.append(f"목표점 {goal[0]:.2f}, {goal[1]:.2f} 이 이미지 범위 밖 (Go2Start의 파란 축을 목표 쪽으로 돌릴 것)")
+    elif goal[0] < 0.5 * abs(goal[1]):
+        warnings.append("목표점이 로봇 전방이 아님 (Go2Start의 파란 축을 목표 쪽으로 돌릴 것)")
 
     out = os.path.join(DATA_DIR, scene)
     os.makedirs(out, exist_ok=True)
