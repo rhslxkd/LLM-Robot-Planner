@@ -10,7 +10,7 @@ episode_metrics.py ─ 표 ①·② 공통 '실행 지표' (MuJoCo rollout 하�
 | time_to_goal_s       | 처음 goal 반경에 들어온 시각 (도달 못 하면 NaN)                | RoboGauge(통과 시간)             |
 | fell                 | 몸통 z < 0.18 m 또는 기울기 > 90° (check_fall.py와 동일)       | DDAT, RoboGauge                  |
 | tilt_max/mean_deg    | 몸통 +z축과 world +z축 사이 각도                              | RoboGauge(자세 안정성)           |
-| collided / steps     | go2.xml 전신 모델 재생 시 장애물 침투 timestep (collision_replay) | Shield-Loco                    |
+| collided / steps     | go2.xml 전신 모델 재생 시 장애물에 1 cm 이상 침투한 timestep      | Shield-Loco                    |
 | track_mean/max_m     | 각 waypoint에 대한 실제 궤적 최근접 거리                      | DIAL-MPC, Adaptive MPC           |
 | path_dev_mean_m      | 실제 몸통 궤적 → 계획 polyline까지 거리의 평균                 |                                  |
 | torque_sat_*         | |ctrl| ≥ 0.99·한계인 비율 (관절 유형별)                        | RoboGauge(DoF limits)            |
@@ -25,6 +25,7 @@ from analysis.collision_replay import count_collisions
 
 DT = 0.02
 GOAL_RADIUS_M = 0.3
+COLLISION_TOL_M = 0.01      # 1 cm 이상 침투해야 충돌로 셈 (충돌 형상 근사·접촉 margin 흡수). 논문에 명시할 것
 FALL_MIN_Z_M = 0.18
 
 # Go2 관절별 토크 한계 (actuator 순서: FR, FL, RR, RL × hip(abduction), thigh, calf)
@@ -88,7 +89,7 @@ def evaluate_rollout(states: np.ndarray, scene_xml: str, planned_xy: np.ndarray,
     fell = bool(fell_mask.any())
 
     # 충돌 (전신 모델 재생)
-    col = count_collisions(scene_xml, qpos)
+    col = count_collisions(scene_xml, qpos, penetration_tol=-COLLISION_TOL_M)
 
     # 추종
     wp_d = np.array([np.linalg.norm(xy - w, axis=1).min() for w in planned_xy])
