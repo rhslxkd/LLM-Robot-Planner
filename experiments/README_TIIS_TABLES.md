@@ -83,7 +83,16 @@ results/table1_ablation.tex / .md, results/table2_comparison.tex / .md
 - **장애물 box 수**: Unity 점유 지도를 0.05 m 격자로 그대로 box로 만든다. box가 수백 개면 DIAL-MPC가 느려지니 `build_scene.py --mj-cell 0.1`로 줄인다 (GT도 같은 격자로 바뀌어 일관성 유지).
 - **LaTeX**: `dial_core.py`는 scienceplots의 LaTeX 스타일로 그림을 그린 뒤 states.npy를 저장한다. 서버에 LaTeX(cm-super)가 없으면 저장 전에 죽는다.
 
-## 6. 테스트 (Unity 없이)
+## 6. 베이스라인 신뢰도 검증 (논문 부록·리뷰 대응)
+자세한 명세와 결과는 `experiments/BASELINE_FIDELITY.md`.
+```bash
+python tests/verify_grid_planners.py                       # A*/Dijkstra 최적성(vs NetworkX), 경로 유효성, 정확한 선분 순회
+git clone --depth 1 https://github.com/SilinMeng0510/llm-astar /tmp/llm-astar
+python tests/verify_llmastar_equivalence.py --dataset /tmp/llm-astar/dataset/environment_50_30.json   # 원본 = 래퍼
+python tests/replicate_llmastar_benchmark.py --dataset /tmp/llm-astar/dataset/environment_50_30.json --n 100  # Gemini로 원 논문 경향 재현
+```
+
+## 7. 테스트 (Unity 없이)
 ```bash
 python indoor/make_synthetic_export.py --out Go2Export --n 3
 SCENES="synthetic_000 synthetic_001 synthetic_002" TRIALS=2 STAGES="0 2" ./experiments/run_tables.sh
