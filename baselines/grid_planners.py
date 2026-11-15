@@ -93,10 +93,49 @@ def grid_search(occ: np.ndarray, start: tuple, goal: tuple, heuristic: bool = Tr
     return None, expanded
 
 
+def segment_cells(grid: OccGrid, a: np.ndarray, b: np.ndarray) -> list[tuple[int, int]]:
+    """선분 a→b가 지나는 모든 셀 (Amanatides & Woo 1987 격자 순회). 샘플링이 아니라 정확한 집합이다.
+    선분이 셀 모서리(꼭짓점)를 정확히 지나는 경우에는 그 꼭짓점에 닿은 셀을 모두 포함한다 (보수적)."""
+    res, (x0, y0) = grid.res, grid.origin
+    # 셀 (r, c)는 x ∈ [x0 + (c-0.5)res, x0 + (c+0.5)res) → 셀 경계 좌표계로 옮긴다
+    ax, ay = (a[0] - x0) / res + 0.5, (a[1] - y0) / res + 0.5
+    bx, by = (b[0] - x0) / res + 0.5, (b[1] - y0) / res + 0.5
+    c, r = int(np.floor(ax)), int(np.floor(ay))
+    c_end, r_end = int(np.floor(bx)), int(np.floor(by))
+    dx, dy = bx - ax, by - ay
+    step_c, step_r = (1 if dx > 0 else -1), (1 if dy > 0 else -1)
+    inf = float("inf")
+    t_dc = abs(1.0 / dx) if dx != 0 else inf
+    t_dr = abs(1.0 / dy) if dy != 0 else inf
+    t_c = ((c + 1 - ax) if dx > 0 else (ax - c)) * t_dc if dx != 0 else inf
+    t_r = ((r + 1 - ay) if dy > 0 else (ay - r)) * t_dr if dy != 0 else inf
+    cells = [(r, c)]
+    eps = 1e-12
+    while (c, r) != (c_end, r_end):
+        if abs(t_c - t_r) < eps:                     # 꼭짓점 통과: 대각선 이웃 두 셀도 포함
+            if t_c > 1.0 + eps:
+                break
+            cells += [(r, c + step_c), (r + step_r, c)]
+            c += step_c; r += step_r
+            t_c += t_dc; t_r += t_dr
+        elif t_c < t_r:
+            if t_c > 1.0 + eps:
+                break
+            c += step_c; t_c += t_dc
+        else:
+            if t_r > 1.0 + eps:
+                break
+            r += step_r; t_r += t_dr
+        cells.append((r, c))
+    return cells
+
+
 def _segment_free(grid: OccGrid, a: np.ndarray, b: np.ndarray) -> bool:
-    n = max(int(np.ceil(np.linalg.norm(b - a) / (grid.res / 2))), 1)
-    pts = a + np.linspace(0, 1, n + 1)[:, None] * (b - a)
-    return not grid.occupied(pts).any()
+    H, W = grid.occ.shape
+    for r, c in segment_cells(grid, np.asarray(a, float), np.asarray(b, float)):
+        if not (0 <= r < H and 0 <= c < W) or grid.occ[r, c]:
+            return False
+    return True
 
 
 def shortcut(grid: OccGrid, poly: np.ndarray) -> np.ndarray:
@@ -112,6 +151,17 @@ def shortcut(grid: OccGrid, poly: np.ndarray) -> np.ndarray:
     return np.array(out)
 
 
+def drop_collinear(poly: np.ndarray, tol: float = 1e-9) -> np.ndarray:
+    """기하학적으로 같은 경로를 유지하면서 일직선 위의 중간점만 제거 (격자 경로 원형 보존용)."""
+    out = [poly[0]]
+    for i in range(1, len(poly) - 1):
+        a, b, c = out[-1], poly[i], poly[i + 1]
+        if abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) > tol:
+            out.append(b)
+    out.append(poly[-1])
+    return np.array(out)
+
+
 def to_n_waypoints(poly: np.ndarray, n: int) -> np.ndarray:
     """꺾인점은 유지하고, 가장 긴 구간을 반으로 나누는 것을 반복해 n개로 맞춘다 (n보다 많으면 그대로)."""
     pts = [p for p in poly]
@@ -123,7 +173,8 @@ def to_n_waypoints(poly: np.ndarray, n: int) -> np.ndarray:
 
 
 def plan_grid(grid: OccGrid, goal_xy, n_waypoints: int, method: str = "astar",
-              inflate_m: float = DEFAULT_INFLATE_M) -> dict:
+              inflate_m: float = DEFAULT_INFLATE_M, smoothing: bool = True) -> dict:
+    """smoothing=True: line-of-sight 단축(기본, 표 ②). False: 격자 경로 그대로(일직선 중간점만 제거) → 부록·민감도용."""
     t0 = time.perf_counter()
     inf = inflate(grid, inflate_m)
     s = _nearest_free(inf.occ, tuple(int(v) for v in inf.to_cell(np.array([0.0, 0.0]))))
@@ -135,9 +186,12 @@ def plan_grid(grid: OccGrid, goal_xy, n_waypoints: int, method: str = "astar",
         return {"path": None, "plan_time_s": time.perf_counter() - t0, "expanded": expanded, "reason": "no path"}
     poly = inf.to_world(*np.array(cells).T)
     poly[0], poly[-1] = [0.0, 0.0], np.asarray(goal_xy, float)
-    poly = to_n_waypoints(shortcut(inf, poly), n_waypoints)
+    raw_len = float(np.linalg.norm(np.diff(poly, axis=0), axis=1).sum())
+    poly = to_n_waypoints(shortcut(inf, poly) if smoothing else drop_collinear(poly), n_waypoints)
     return {"path": poly, "plan_time_s": time.perf_counter() - t0, "expanded": expanded,
-            "inflate_m": inflate_m}
+            "inflate_m": inflate_m, "smoothing": smoothing, "raw_grid_len_m": raw_len,
+            "grid_cost_cells": float(sum(np.sqrt(2) if (a[0] != b[0] and a[1] != b[1]) else 1.0
+                                         for a, b in zip(cells[:-1], cells[1:])))}
 
 
 def plan_rrtstar(grid: OccGrid, goal_xy, n_waypoints: int, seed: int, inflate_m: float = DEFAULT_INFLATE_M,

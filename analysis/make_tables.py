@@ -22,6 +22,7 @@ TABLE1_ROWS = [("C1", "Single agent"), ("C1xk", "Single agent $\\times k$ (medoi
 TABLE2_ROWS = [("astar_gt", "A* (GT map)", "GT map", "--"),
                ("astar_seg", "A* (segmented)", "Segmentation", "--"),
                ("dijkstra_gt", "Dijkstra (GT map)", "GT map", "--"),
+               ("astarraw_gt", "A* (GT map, no smoothing)", "GT map", "--"),
                ("rrtstar_gt", "RRT* (GT map)", "GT map", "--"),
                ("rrtstar_seg", "RRT* (segmented)", "Segmentation", "--"),
                ("llmastar_gt", "LLM-A* (GT map)", "GT map", "Text map + 5-shot"),

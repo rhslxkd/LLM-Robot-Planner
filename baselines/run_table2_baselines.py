@@ -7,6 +7,7 @@ run_table2_baselines.py ─ 표 ② 고전 베이스라인 실행 (계획 단계
   dijkstra_gt   Dijkstra + GT 점유 지도
   rrtstar_gt    RRT*     + GT 점유 지도   (seed = trial 번호 → 시행마다 다른 경로)
   rrtstar_seg   RRT*     + 이미지 분할 지도
+  astarraw_gt   A*       + GT 지도, 경로 단축 없이 격자 경로 그대로 (부록·민감도용, --methods로 지정할 때만)
 
 결정적 방법(A*, Dijkstra)은 시행을 반복해도 경로가 같으므로 --det-trials(기본 1)만큼만 돌린다.
 
@@ -32,8 +33,9 @@ from baselines.grid_planners import DEFAULT_INFLATE_M, plan_grid, plan_rrtstar  
 from baselines.image_occupancy import occupancy_from_image  # noqa: E402
 from experiments.trial_io import clear_execution  # noqa: E402
 
-METHODS = ("astar_gt", "astar_seg", "dijkstra_gt", "rrtstar_gt", "rrtstar_seg")
-DETERMINISTIC = {"astar_gt", "astar_seg", "dijkstra_gt"}
+METHODS = ("astar_gt", "astar_seg", "dijkstra_gt", "rrtstar_gt", "rrtstar_seg", "astarraw_gt")
+DETERMINISTIC = {"astar_gt", "astar_seg", "dijkstra_gt", "astarraw_gt"}
+DEFAULT_METHODS = ("astar_gt", "astar_seg", "dijkstra_gt", "rrtstar_gt", "rrtstar_seg")   # astarraw_gt는 부록용 (요청 시)
 
 
 def seg_grid(scene_dir: str, sm: dict, gt: OccGrid, tol: float) -> OccGrid:
@@ -83,8 +85,9 @@ def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: floa
             if os.path.exists(os.path.join(out, "meta.json")) and not force:
                 logs.append(f"{scene}/{method}/trial_{t:02d}: 이미 있음 (건너뜀, 다시 하려면 --force)")
                 continue
-            if algo in ("astar", "dijkstra"):
-                r = plan_grid(grid, goal, n, method=algo, inflate_m=inflate_m)
+            if algo in ("astar", "dijkstra", "astarraw"):
+                r = plan_grid(grid, goal, n, method="dijkstra" if algo == "dijkstra" else "astar",
+                              inflate_m=inflate_m, smoothing=(algo != "astarraw"))
             else:
                 r = plan_rrtstar(grid, goal, n, seed=t, inflate_m=inflate_m)
             os.makedirs(out, exist_ok=True)
@@ -99,7 +102,8 @@ def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: floa
                     "n_requested": n, "plan_time_s": round(r["plan_time_s"], 4), "n_calls": 0, "api_error": False,
                     "inflate_m": inflate_m, "seg_tol": seg_tol if src == "seg" else None,
                     "seg_cell_agreement": agree if src == "seg" else None,
-                    **{k: v for k, v in r.items() if k in ("expanded", "n_nodes", "reason", "seed")}}
+                    **{k: v for k, v in r.items() if k in ("expanded", "n_nodes", "reason", "seed", "smoothing",
+                                                           "raw_grid_len_m", "grid_cost_cells")}}
             json.dump(meta, open(os.path.join(out, "meta.json"), "w"), indent=2)
             logs.append(f"{scene}/{method}/trial_{t:02d}: {'ok' if r['path'] is not None else '✗ ' + r.get('reason', '')}"
                         f" ({r['plan_time_s'] * 1000:.0f} ms)")
@@ -109,7 +113,7 @@ def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: floa
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--scenes", nargs="+", required=True)
-    ap.add_argument("--methods", nargs="+", default=list(METHODS), choices=METHODS)
+    ap.add_argument("--methods", nargs="+", default=list(DEFAULT_METHODS), choices=METHODS)
     ap.add_argument("--trials", type=int, default=5, help="확률적 방법(RRT*)의 시행 수")
     ap.add_argument("--det-trials", type=int, default=1, help="결정적 방법(A*, Dijkstra)의 시행 수")
     ap.add_argument("--inflate", type=float, default=DEFAULT_INFLATE_M, help="장애물 팽창 반경 (m)")
