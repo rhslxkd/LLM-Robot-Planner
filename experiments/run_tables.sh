@@ -18,6 +18,10 @@
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
+# 이 폴더의 dial_mpc를 쓰도록 강제 (다른 체크아웃에 editable 설치돼 있어도 토크 한계·씬 XML이 이쪽 것으로 잡히게)
+export PYTHONPATH="$REPO_ROOT/dial_mpc:$REPO_ROOT:${PYTHONPATH:-}"
+DIAL_PKG=$(python -c "import dial_mpc, os; print(os.path.dirname(dial_mpc.__file__))")
+[ "$DIAL_PKG" = "$REPO_ROOT/dial_mpc/dial_mpc" ] || { echo "dial_mpc가 다른 위치에서 import됨: $DIAL_PKG"; exit 1; }
 
 EXPORT_ROOT=${EXPORT_ROOT:-Go2Export}
 # SCENES를 안 주면 Go2Export/ 아래 meta.json이 있는 폴더 전부
