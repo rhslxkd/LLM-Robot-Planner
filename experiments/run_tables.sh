@@ -79,6 +79,7 @@ if has 4; then
   log "▶ 4) 지표 → 표"
   python analysis/evaluate_all.py --scenes $SCENES --out results 2>&1 | tee -a "$LOG_DIR/4_eval.log"
   python analysis/make_tables.py --results results 2>&1 | tee -a "$LOG_DIR/4_eval.log"
+  python analysis/plot_paths.py --scenes $SCENES --out results/figs 2>&1 | tee -a "$LOG_DIR/4_eval.log"
 fi
 
-log "🏁 끝. 표: results/table1_ablation.tex, results/table2_comparison.tex (미리보기 .md)"
+log "🏁 끝. 표: results/table1_ablation.tex, results/table2_comparison.tex (미리보기 .md), 그림: results/figs/"
