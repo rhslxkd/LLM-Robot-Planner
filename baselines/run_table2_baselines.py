@@ -30,6 +30,7 @@ sys.path.insert(0, REPO)
 from analysis.plan_metrics import OccGrid  # noqa: E402
 from baselines.grid_planners import DEFAULT_INFLATE_M, plan_grid, plan_rrtstar  # noqa: E402
 from baselines.image_occupancy import occupancy_from_image  # noqa: E402
+from experiments.trial_io import clear_execution  # noqa: E402
 
 METHODS = ("astar_gt", "astar_seg", "dijkstra_gt", "rrtstar_gt", "rrtstar_seg")
 DETERMINISTIC = {"astar_gt", "astar_seg", "dijkstra_gt"}
@@ -65,7 +66,8 @@ def seg_agreement(seg: OccGrid, gt: OccGrid, margin_m: float = 0.3) -> float:
     return float((seg.occ[reach] == gt.occ[reach]).mean())
 
 
-def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: float, seg_tol: float) -> list[str]:
+def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: float, seg_tol: float,
+              force: bool = False) -> list[str]:
     scene_dir = os.path.join(REPO, "data", scene)
     sm = json.load(open(os.path.join(scene_dir, "scene_meta.json")))
     gt = OccGrid.load(os.path.join(scene_dir, "occupancy.npz"))
@@ -77,12 +79,16 @@ def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: floa
         algo, src = method.split("_")
         grid = gt if src == "gt" else seg
         for t in range(det_trials if method in DETERMINISTIC else trials):
+            out = os.path.join(scene_dir, method, f"trial_{t:02d}")
+            if os.path.exists(os.path.join(out, "meta.json")) and not force:
+                logs.append(f"{scene}/{method}/trial_{t:02d}: 이미 있음 (건너뜀, 다시 하려면 --force)")
+                continue
             if algo in ("astar", "dijkstra"):
                 r = plan_grid(grid, goal, n, method=algo, inflate_m=inflate_m)
             else:
                 r = plan_rrtstar(grid, goal, n, seed=t, inflate_m=inflate_m)
-            out = os.path.join(scene_dir, method, f"trial_{t:02d}")
             os.makedirs(out, exist_ok=True)
+            clear_execution(out)
             pj = os.path.join(out, "last_judged_path.json")
             if os.path.exists(pj):
                 os.remove(pj)
@@ -108,9 +114,10 @@ def main():
     ap.add_argument("--det-trials", type=int, default=1, help="결정적 방법(A*, Dijkstra)의 시행 수")
     ap.add_argument("--inflate", type=float, default=DEFAULT_INFLATE_M, help="장애물 팽창 반경 (m)")
     ap.add_argument("--seg-tol", type=float, default=28.0, help="이미지 분할 색 거리 허용치")
+    ap.add_argument("--force", action="store_true", help="이미 계획된 시행도 다시 계획 (DIAL 결과는 삭제됨)")
     a = ap.parse_args()
     for s in a.scenes:
-        for line in run_scene(s, a.methods, a.trials, a.det_trials, a.inflate, a.seg_tol):
+        for line in run_scene(s, a.methods, a.trials, a.det_trials, a.inflate, a.seg_tol, a.force):
             print(line)
 
 

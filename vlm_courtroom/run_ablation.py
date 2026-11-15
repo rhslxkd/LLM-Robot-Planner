@@ -190,7 +190,9 @@ def trial_dir(scene: str, config: str, trial: int) -> str:
 
 
 def save_trial(out: str, scene: str, config: str, trial: int, res: dict, run_info: dict) -> None:
+    from experiments.trial_io import clear_execution
     os.makedirs(out, exist_ok=True)
+    clear_execution(out)
     stale = os.path.join(out, "last_judged_path.json")
     if os.path.exists(stale):
         os.remove(stale)
