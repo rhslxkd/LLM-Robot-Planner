@@ -12,8 +12,9 @@ run_ablation.py ─ 표 ① Agent ablation 실행기 (VLM 단계만. DIAL-MPC는
 판사 없이도 "여러 번 뽑아 가장 대표적인 것"을 고르는 self-consistency 방식이라 정답 정보를 쓰지 않는다.
 
 이미지 접근 (--image-mode)
-  coord (기본) : 기존 시스템과 동일. Coordinate(와 수정 단계)만 이미지를 본다.
-  all          : 검사·변호·판사도 이미지를 본다.
+  all (기본)   : 검사·변호·판사도 이미지를 본다. 표 4의 주 실험.
+  coord        : 기존 시스템과 동일. Coordinate(와 수정 단계)만 이미지를 본다.
+                 --suffix _coord 와 함께 써서 결과를 data/<scene>/C4_coord/ 처럼 따로 저장 (이미지 접근 ablation).
 
 출력: data/<scene>/<config>/trial_<i>/
   last_judged_path.json   최종 경로 (DIAL-MPC 입력, 파싱 실패 시 없음)
