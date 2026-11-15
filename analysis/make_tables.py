@@ -24,6 +24,8 @@ TABLE2_ROWS = [("astar_gt", "A* (GT map)", "GT map", "--"),
                ("dijkstra_gt", "Dijkstra (GT map)", "GT map", "--"),
                ("rrtstar_gt", "RRT* (GT map)", "GT map", "--"),
                ("rrtstar_seg", "RRT* (segmented)", "Segmentation", "--"),
+               ("llmastar_gt", "LLM-A* (GT map)", "GT map", "Text map + 5-shot"),
+               ("llmastar_seg", "LLM-A* (segmented)", "Segmentation", "Text map + 5-shot"),
                ("C4", "\\textbf{Ours (Courtroom)}", "None", "Start/goal only")]
 
 
@@ -98,9 +100,10 @@ def table2(trials, groups) -> tuple[str, str]:
         body.append(f"{label} & {mapsrc} & {prompt} & " + " & ".join(s[c] for c, _ in cols) + " \\\\")
         md.append(f"| {key} | {mapsrc} | {prompt} | {s['n']} | " +
                   " | ".join(s[c].replace(' $\\pm$ ', ' ± ') for c, _ in cols) + " |")
-    tex = ("\\begin{table*}[t]\n\\centering\n\\caption{Comparison with classical planners on indoor BEV scenes. "
-           "Classical planners require an occupancy map (ground truth or segmented from the BEV image); "
-           "ours takes the BEV image with start and goal only.}\n\\label{tab:comparison}\n"
+    tex = ("\\begin{table*}[t]\n\\centering\n\\caption{Comparison with classical and LLM-based planners on indoor BEV scenes. "
+           "Classical planners and LLM-A* require an occupancy map (ground truth or segmented from the BEV image); "
+           "LLM-A* additionally requires the map as text barriers with five in-context examples. "
+           "Ours takes the BEV image with start and goal only.}\n\\label{tab:comparison}\n"
            "\\begin{tabular}{lll" + "c" * len(cols) + "}\n\\toprule\n"
            "Method & Map & Prompt & " + " & ".join(c[1] for c in cols) + " \\\\\n\\midrule\n" + "\n".join(body) +
            "\n\\bottomrule\n\\end{tabular}\n\\end{table*}\n")

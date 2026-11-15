@@ -4,7 +4,7 @@
 # ─────────────────────────────────────────────────────────────────────────
 #   단계 0) Unity 내보내기 → 실험 씬 생성       indoor/build_scene.py
 #   단계 1) VLM 구성 C1, C1xk, C2, C3, C4       vlm_courtroom/run_ablation.py   (Gemini API)
-#   단계 2) 고전 베이스라인                      baselines/run_table2_baselines.py (CPU, 수 초)
+#   단계 2) 고전 베이스라인 + LLM-A*            baselines/run_table2_baselines.py, run_llmastar.py
 #   단계 3) DIAL-MPC 실행                       experiments/run_dial.py          (GPU, 가장 오래 걸림)
 #   단계 4) 지표 계산 → 표                      analysis/evaluate_all.py, make_tables.py
 #
@@ -49,6 +49,9 @@ fi
 if has 2; then
   log "▶ 2) 고전 베이스라인"
   python baselines/run_table2_baselines.py --scenes $SCENES --trials "$TRIALS" 2>&1 | tee -a "$LOG_DIR/2_baselines.log"
+  log "▶ 2b) LLM-A* (Gemini, temperature 0)"
+  python baselines/run_llmastar.py --scenes $SCENES --maps gt seg --trials "${LLMASTAR_TRIALS:-3}" \
+      --gemini-model "$GEMINI_MODEL" 2>&1 | tee -a "$LOG_DIR/2_llmastar.log" | grep -E "ok|✗|⚠️"
 fi
 
 if has 3; then

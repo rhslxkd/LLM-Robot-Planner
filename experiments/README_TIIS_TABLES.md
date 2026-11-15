@@ -5,7 +5,9 @@
 ## 0. 서버 준비 (한 번)
 ```bash
 conda activate vlm_court
-pip install pandas scipy pillow        # 집계·씬 변환용 (대부분 이미 있음)
+pip install pandas scipy pillow shapely     # 집계·씬 변환·LLM-A* 충돌 검사용
+pip install --no-deps llm-astar==0.1.4      # LLM-A* 공식 패키지 (MIT). --no-deps 필수:
+                                            # 그냥 설치하면 openai==0.27.2, torch, transformers가 깔려 환경이 깨질 수 있음
 ```
 Unity 쪽은 `unity/Editor/Go2BevExporter.cs`를 Unity 프로젝트의 `Assets/Editor/`에 넣으면 메뉴 `Tools > Go2 BEV Exporter`가 생긴다.
 
@@ -28,13 +30,26 @@ SCENES="indoor_000 ... indoor_009" TRIALS=5 nohup ./experiments/run_tables.sh &
 |---|---|---|---|
 | 0 | Unity 출력 → VLM 입력 이미지·GT 점유 지도·MuJoCo 씬·DIAL 설정 | `indoor/build_scene.py` | CPU, 수 초 |
 | 1 | 표 ① 구성 C1, C1xk, C2, C3, C4 | `vlm_courtroom/run_ablation.py` | Gemini API |
-| 2 | 표 ② 고전 베이스라인 | `baselines/run_table2_baselines.py` | CPU, 수 초 |
+| 2 | 표 ② 고전 베이스라인 + LLM-A* | `baselines/run_table2_baselines.py`, `run_llmastar.py` | CPU 수 초 + Gemini |
 | 3 | 모든 경로를 DIAL-MPC로 실행 | `experiments/run_dial.py` | GPU, 가장 김 |
 | 4 | 지표 계산 → LaTeX 표 | `analysis/evaluate_all.py`, `make_tables.py` | CPU |
 
 환경변수: `GEMINI_MODEL`(기본 gemini-2.5-pro), `IMAGE_MODE`(coord | all), `WORKERS`(동시 시행 수), `STAGES`("0 1 2 3 4" 중 일부).
 
 **씬 생성 직후 확인할 것**: `data/<씬>/align_check.png` (GT 점유가 빨갛게 가구·벽 위에 정확히 겹치는지), `data/<씬>/scene_meta.json`의 `warnings`.
+
+## 2-1. 표 ② 구성
+| 행 | 지도 | 비고 |
+|---|---|---|
+| A* / Dijkstra / RRT* | GT 점유 지도 | 지도가 완벽할 때의 상한 |
+| A* / RRT* | 이미지 분할 지도 | BEV 바닥색 flood-fill (`baselines/image_occupancy.py`) |
+| LLM-A* (Meng et al., EMNLP Findings 2024) | GT / 분할 | 공식 코드 그대로, LLM만 Gemini 2.5 Pro(temperature 0)로 교체 |
+| Ours (Courtroom, C4) | 없음 | BEV 이미지 + 시작·목표만 |
+
+LLM-A* 어댑터(`baselines/llmastar_adapter.py`)가 하는 일: 점유 지도를 A*와 같은 반경으로 팽창 → 0.2 m 격자로 축소 →
+직사각형 테두리를 원본 형식(`[y, x_start, x_end]`, `[x, y_start, y_end]`)의 선분으로 변환 → 원본 5-shot 프롬프트와 탐색 실행
+→ 다른 격자 방법과 같은 후처리(단축 + N개 waypoint). 원본의 `max_tokens=1000`은 Gemini thinking 토큰 때문에 적용하지 않는다.
+변환 단계에서 목표가 끊기면 LLM을 부르지 않고 `lattice_disconnected`로 기록한다 (`--lattice-unit`을 줄이면 해결).
 
 ## 3. 결과 위치
 ```
