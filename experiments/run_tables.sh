@@ -11,20 +11,25 @@
 # 각 단계는 이미 끝난 시행을 건너뛰므로, 중간에 끊겨도 같은 명령을 다시 실행하면 이어서 진행된다.
 #
 # 사용법
-#   SCENES="indoor_000 indoor_001 indoor_002" TRIALS=5 nohup ./experiments/run_tables.sh &
+#   TRIALS=5 nohup ./experiments/run_tables.sh &          # Go2Export/ 아래 씬 전부
+#   SCENES="indoor_000 indoor_001" TRIALS=1 ./experiments/run_tables.sh   # 일부 씬만
 #   STAGES="1 2" ./experiments/run_tables.sh        # 일부 단계만
 #
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-SCENES=${SCENES:?"SCENES 환경변수에 씬 이름을 공백으로 나열 (예: SCENES=\"indoor_000 indoor_001\")"}
+EXPORT_ROOT=${EXPORT_ROOT:-Go2Export}
+# SCENES를 안 주면 Go2Export/ 아래 meta.json이 있는 폴더 전부
+if [ -z "${SCENES:-}" ]; then
+  SCENES=$(for d in "$EXPORT_ROOT"/*/; do [ -f "$d/meta.json" ] && basename "$d"; done | tr '\n' ' ')
+fi
+[ -n "$SCENES" ] || { echo "씬이 없음: $EXPORT_ROOT/<씬>/meta.json 을 넣거나 SCENES를 지정"; exit 1; }
 TRIALS=${TRIALS:-5}
 GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-pro}
 IMAGE_MODE=${IMAGE_MODE:-coord}          # coord(기존 시스템) | all(모든 agent가 이미지)
 WORKERS=${WORKERS:-2}
 STAGES=${STAGES:-"0 1 2 3 4"}
-EXPORT_ROOT=${EXPORT_ROOT:-Go2Export}
 
 LOG_DIR="$REPO_ROOT/logs/tables_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$LOG_DIR"
