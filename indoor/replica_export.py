@@ -8,7 +8,7 @@ Unity 내보내기(unity/Editor/Go2BevExporter.cs)와 같은 형식을 만들므
         비상업 연구용 라이선스. 씬마다 <scene>/mesh.ply (정점 색이 있는 quad mesh, z-up, 단위 m).
 
 사용법
-  # 1) 씬 전체를 위에서 본 지도 + 시작/목표 후보 (한 번, 씬마다 수십 초~수 분)
+  # 1) 씬 전체를 위에서 본 지도 + 시작/목표 후보 (직선이 막혀 있고 서로 다른 경로가 2개 이상인 쌍)
   python indoor/replica_export.py scan  --mesh /data/replica/room_0/mesh.ply --name room_0
       → replica_cache/room_0/{master.npz, overview.png, pairs.json}
   # 2) 고른 후보를 내보내기 (overview.png의 번호)
@@ -322,39 +322,67 @@ def export_pair(M, name, start, goal_scene, out_root, mesh_path=""):
 
 
 # ─── 시작/목표 후보 ─────────────────────────────────────────────────────
-def suggest_pairs(grid: OccGrid, n=8, d_min=5.0, d_max=8.5, clear=0.6, detour=1.12, seed=0):
-    """여유 공간이 clear 이상인 점들 중, 직선 거리 d_min~d_max이고 A* 경로가 직선보다 detour배 이상 긴 쌍."""
+def _path_len(path, res):
+    p = np.asarray(path, float)
+    return float(np.linalg.norm(np.diff(p, axis=0), axis=1).sum() * res)
+
+
+def suggest_pairs(grid: OccGrid, n=8, d_min=4.0, d_max=8.5, clear=0.6, seed=0, alt_ratio=1.5):
+    """시작/목표 후보.
+
+    조건: 두 점 모두 장애물에서 clear 이상 떨어짐, 직선 거리 d_min~d_max, 같은 연결 영역,
+    직선이 (팽창한) 장애물에 막힘, 그리고 **서로 다른 경로가 2개 이상**: A* 최단 경로 주변 0.6 m를 막고
+    다시 찾은 경로가 최단의 alt_ratio배 이내로 존재.
+    """
     rng = np.random.default_rng(seed)
     dist = ndimage.distance_transform_edt(~grid.occ) * grid.res
     inf = inflate(grid, 0.441)
     lab, _ = ndimage.label(~inf.occ, structure=np.ones((3, 3)))
-    step = int(round(0.4 / grid.res))
-    rr, cc = np.mgrid[step // 2:grid.occ.shape[0]:step, step // 2:grid.occ.shape[1]:step]
     sizes = np.bincount(lab.ravel())
     sizes[0] = 0
     main = int(sizes.argmax())                                # 가장 큰 연결 영역만 (가구 속 빈 주머니 제외)
-    cand = [(r, c) for r, c in zip(rr.ravel(), cc.ravel()) if dist[r, c] >= clear and lab[r, c] == main]
+    step = int(round(0.4 / grid.res))
+    rr, cc = np.mgrid[step // 2:grid.occ.shape[0]:step, step // 2:grid.occ.shape[1]:step]
+    cand = np.array([(r, c) for r, c in zip(rr.ravel(), cc.ravel()) if dist[r, c] >= clear and lab[r, c] == main])
     if len(cand) < 2:
         return []
-    cand = np.array(cand)
     xy = np.stack([grid.origin[0] + cand[:, 1] * grid.res, grid.origin[1] + cand[:, 0] * grid.res], 1)
     D = np.linalg.norm(xy[:, None] - xy[None], axis=2)
-    ii, jj = np.where((D >= d_min) & (D <= d_max))
-    same = lab[cand[ii, 0], cand[ii, 1]] == lab[cand[jj, 0], cand[jj, 1]]
-    ii, jj = ii[same], jj[same]
-    order = rng.permutation(len(ii))[:150]
+    ii, jj = np.where((D >= d_min) & (D <= d_max) & (np.arange(len(xy))[:, None] < np.arange(len(xy))[None]))
+    order = rng.permutation(len(ii))[:300]
+    block_r = int(round(0.6 / grid.res))
+    disk = np.hypot(*np.mgrid[-block_r:block_r + 1, -block_r:block_r + 1]) <= block_r
     found = []
     for o in order:
         a, b = ii[o], jj[o]
-        res = grid_search(inf.occ, tuple(cand[a]), tuple(cand[b]), heuristic=True)
-        path = res[0] if isinstance(res, tuple) else res
-        if path is None:
+        if rng.random() < 0.5:
+            a, b = b, a
+        sa, sb = tuple(cand[a]), tuple(cand[b])
+        # 직선이 막혀 있어야 함
+        nseg = int(D[a, b] / grid.res) * 2
+        line = np.linspace(cand[a], cand[b], nseg).round().astype(int)
+        if not inf.occ[line[:, 0], line[:, 1]].any():
             continue
-        p = np.asarray(path, float)
-        L = float(np.linalg.norm(np.diff(p, axis=0), axis=1).sum() * grid.res)
-        if L / D[a, b] < detour:
+        p1, _ = grid_search(inf.occ, sa, sb, heuristic=True)
+        if p1 is None:
             continue
-        # yaw: 목표 방향을 90° 단위로 맞추고, 목표가 화면 안(전방·좌우)에 들어오는지 확인
+        L1 = _path_len(p1, grid.res)
+        # 두 번째 경로: 최단 경로의 중간 부분(시작·목표 1 m 밖)을 막고 다시 탐색
+        blocked = inf.occ.copy()
+        keep = int(round(1.0 / grid.res))
+        for r, c in p1:
+            if min(abs(r - sa[0]) + abs(c - sa[1]), abs(r - sb[0]) + abs(c - sb[1])) <= keep:
+                continue
+            r0, c0 = r - block_r, c - block_r
+            sl = (slice(max(r0, 0), r + block_r + 1), slice(max(c0, 0), c + block_r + 1))
+            d = disk[sl[0].start - r0:sl[0].stop - r0, sl[1].start - c0:sl[1].stop - c0]
+            blocked[sl] |= d
+        p2, _ = grid_search(blocked, sa, sb, heuristic=True)
+        if p2 is None:
+            continue
+        L2 = _path_len(p2, grid.res)
+        if L2 > alt_ratio * L1:
+            continue
         d = xy[b] - xy[a]
         yaw = np.round(np.arctan2(d[1], d[0]) / (np.pi / 2)) * (np.pi / 2)
         gx = np.cos(yaw) * d[0] + np.sin(yaw) * d[1]
@@ -363,13 +391,14 @@ def suggest_pairs(grid: OccGrid, n=8, d_min=5.0, d_max=8.5, clear=0.6, detour=1.
             continue
         found.append(dict(start=[float(xy[a, 0]), float(xy[a, 1]), float(np.degrees(yaw))],
                           goal=[float(xy[b, 0]), float(xy[b, 1])], straight_m=float(D[a, b]),
-                          astar_m=L, detour=L / float(D[a, b])))
-    # 서로 다른 곳을 고르도록: detour 큰 순으로 보되, 이미 고른 쌍과 시작·목표가 모두 1.5 m 이내면 건너뜀
-    found.sort(key=lambda p: -p["detour"])
+                          astar_m=L1, alt_m=L2, detour=L1 / float(D[a, b])))
+    # 다양하게: 직선 거리가 긴 순으로 보되, 이미 고른 쌍과 시작·목표가 모두 1.5 m 이내면 건너뜀
+    found.sort(key=lambda p: -p["straight_m"])
     picked = []
     for p in found:
-        s, g = np.array(p["start"][:2]), np.array(p["goal"])
-        if all(np.linalg.norm(s - np.array(q["start"][:2])) > 1.5 or np.linalg.norm(g - np.array(q["goal"])) > 1.5
+        s0, g0 = np.array(p["start"][:2]), np.array(p["goal"])
+        if all(min(np.linalg.norm(s0 - np.array(q["start"][:2])), np.linalg.norm(s0 - np.array(q["goal"]))) > 1.5
+               or min(np.linalg.norm(g0 - np.array(q["goal"])), np.linalg.norm(g0 - np.array(q["start"][:2]))) > 1.5
                for q in picked):
             picked.append(p)
         if len(picked) >= n:
@@ -435,13 +464,13 @@ def cmd_scan(a):
     M["mesh"] = np.str_(os.path.abspath(a.mesh))
     np.savez_compressed(os.path.join(out, "master.npz"), **M)
     grid = scene_grid(M)
-    pairs = suggest_pairs(grid, n=a.n_pairs, seed=a.seed)
+    pairs = suggest_pairs(grid, n=a.n_pairs, d_min=a.d_min, d_max=a.d_max, seed=a.seed)
     json.dump(pairs, open(os.path.join(out, "pairs.json"), "w"), indent=2)
     draw_overview(M, grid, pairs, os.path.join(out, "overview.png"))
     free = float((~grid.occ).sum() * CELL ** 2)
     print(f"   빈 바닥 {free:.1f} m², 후보 쌍 {len(pairs)}개 → {out}/overview.png  ({time.time() - t0:.0f} s)")
     for k, p in enumerate(pairs):
-        print(f"   [{k}] 직선 {p['straight_m']:.1f} m, A* {p['astar_m']:.1f} m (×{p['detour']:.2f})")
+        print(f"   [{k}] 직선 {p['straight_m']:.1f} m, 최단 {p['astar_m']:.1f} m, 다른 경로 {p['alt_m']:.1f} m")
 
 
 def cmd_export(a):
@@ -470,6 +499,8 @@ def main():
     s.add_argument("--name", required=True)
     s.add_argument("--floor-z", type=float, default=None, help="바닥 높이 직접 지정 (여러 층인 씬)")
     s.add_argument("--n-pairs", type=int, default=8)
+    s.add_argument("--d-min", type=float, default=4.0, help="시작–목표 최소 직선 거리 (m)")
+    s.add_argument("--d-max", type=float, default=8.5)
     s.add_argument("--seed", type=int, default=0)
     s.add_argument("--cache", default=CACHE_DIR)
     s.set_defaults(fn=cmd_scan)
