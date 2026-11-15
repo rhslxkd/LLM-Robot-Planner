@@ -224,9 +224,11 @@ def main():
     ap.add_argument("--gemini-model", default="gemini-2.5-pro")
     ap.add_argument("--ollama-model", default=None)
     ap.add_argument("--openai-model", default=None)
-    ap.add_argument("--image-mode", default="coord", choices=["coord", "all"])
+    ap.add_argument("--image-mode", default="all", choices=["coord", "all"])
     ap.add_argument("--workers", type=int, default=1, help="동시에 돌릴 시행 수 (API 할당량 주의)")
     ap.add_argument("--no-rerun-api-errors", action="store_true")
+    ap.add_argument("--suffix", default="", help="결과 폴더 이름 접미사 (예: _coord → data/<scene>/C4_coord/). "
+                                                  "image-mode를 바꿔 같은 구성을 한 번 더 돌릴 때 사용")
     args = ap.parse_args()
 
     agent_kwargs = {"backend": args.backend}
@@ -243,7 +245,7 @@ def main():
         sm = load_scene(scene)
         for config in args.configs:
             for t in range(args.trials):
-                out = trial_dir(scene, config, t)
+                out = trial_dir(scene, config + args.suffix, t)
                 if needs_run(out, not args.no_rerun_api_errors):
                     jobs.append((scene, sm, config, t, out))
     print(f"🧪 실행할 시행 {len(jobs)}개 (씬 {len(args.scenes)} × 구성 {len(args.configs)} × {args.trials}회 중 미완료)")
@@ -255,12 +257,12 @@ def main():
             res = run_trial(config, sm["scenario"].format(num_waypoints=sm["num_waypoints"]), sm["image_path"],
                             sm["num_waypoints"], agent_kwargs, args.image_mode, args.k)
             res["meta"]["wall_s"] = round(time.perf_counter() - t0, 2)
-            save_trial(out, scene, config, t, res, run_info)
+            save_trial(out, scene, config + args.suffix, t, res, run_info)
             m = res["meta"]
-            return f"{scene}/{config}/trial_{t:02d}: parse={m['parse_ok']} calls={m['n_calls']} api_error={m['api_error']}"
+            return f"{scene}/{config}{args.suffix}/trial_{t:02d}: parse={m['parse_ok']} calls={m['n_calls']} api_error={m['api_error']}"
         except Exception as e:
             os.makedirs(out, exist_ok=True)
-            json.dump({"scene": scene, "config": config, "trial": t, **run_info, "api_error": True,
+            json.dump({"scene": scene, "config": config + args.suffix, "trial": t, **run_info, "api_error": True,
                        "parse_ok": False, "exception": f"{type(e).__name__}: {e}",
                        "traceback": traceback.format_exc()}, open(os.path.join(out, "meta.json"), "w"), indent=2)
             return f"{scene}/{config}/trial_{t:02d}: ❌ {type(e).__name__}: {e}"

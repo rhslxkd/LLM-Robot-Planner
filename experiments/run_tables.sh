@@ -31,7 +31,8 @@ fi
 [ -n "$SCENES" ] || { echo "씬이 없음: $EXPORT_ROOT/<씬>/meta.json 을 넣거나 SCENES를 지정"; exit 1; }
 TRIALS=${TRIALS:-5}
 GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-pro}
-IMAGE_MODE=${IMAGE_MODE:-coord}          # coord(기존 시스템) | all(모든 agent가 이미지)
+IMAGE_MODE=${IMAGE_MODE:-all}            # 주 실험: all(모든 agent가 이미지) | coord(Coordinate만)
+COORD_ABLATION=${COORD_ABLATION:-1}      # 1이면 C2~C4를 Coordinate만 이미지를 보는 설정으로 한 번 더 (결과 폴더 *_coord)
 WORKERS=${WORKERS:-2}
 STAGES=${STAGES:-"0 1 2 3 4"}
 
@@ -40,7 +41,7 @@ mkdir -p "$LOG_DIR"
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$LOG_DIR/summary.log"; }
 has() { [[ " $STAGES " == *" $1 "* ]]; }
 
-log "씬: $SCENES | 시행: $TRIALS | 모델: $GEMINI_MODEL | image-mode: $IMAGE_MODE | 단계: $STAGES"
+log "씬: $SCENES | 시행: $TRIALS | 모델: $GEMINI_MODEL | image-mode: $IMAGE_MODE (coord ablation: $COORD_ABLATION) | 단계: $STAGES"
 
 if has 0; then
   log "▶ 0) 실험 씬 생성"
@@ -53,6 +54,12 @@ if has 1; then
   python vlm_courtroom/run_ablation.py --scenes $SCENES --trials "$TRIALS" \
       --gemini-model "$GEMINI_MODEL" --image-mode "$IMAGE_MODE" --workers "$WORKERS" \
       2>&1 | tee -a "$LOG_DIR/1_vlm.log" | grep -E "^\[|🧪"
+  if [ "$COORD_ABLATION" = 1 ] && [ "$IMAGE_MODE" = all ]; then
+    log "▶ 1b) 이미지 접근 ablation: C2 C3 C4를 Coordinate만 이미지를 보는 설정으로"
+    python vlm_courtroom/run_ablation.py --scenes $SCENES --trials "$TRIALS" --configs C2 C3 C4 \
+        --gemini-model "$GEMINI_MODEL" --image-mode coord --suffix _coord --workers "$WORKERS" \
+        2>&1 | tee -a "$LOG_DIR/1_vlm.log" | grep -E "^\[|🧪"
+  fi
 fi
 
 if has 2; then

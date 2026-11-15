@@ -18,7 +18,11 @@ import numpy as np
 import pandas as pd
 
 TABLE1_ROWS = [("C1", "Single agent"), ("C1xk", "Single agent $\\times k$ (medoid)"),
-               ("C2", "+ Prosecutor"), ("C3", "+ Prosecutor + Defense"), ("C4", "+ Judge (full)")]
+               ("C2", "+ Prosecutor"), ("C3", "+ Prosecutor + Defense"), ("C4", "+ Judge (full)"),
+               # 이미지 접근 ablation: 주 실험(모든 agent가 이미지)과 같은 구성을 Coordinate만 이미지를 보게 해서 다시 실행
+               ("C2_coord", "+ Prosecutor (image: Coordinate only)"),
+               ("C3_coord", "+ Prosecutor + Defense (image: Coordinate only)"),
+               ("C4_coord", "+ Judge (image: Coordinate only)")]
 TABLE2_ROWS = [("astar_gt", "A* (GT map)", "GT map", "--"),
                ("astar_seg", "A* (segmented)", "Segmentation", "--"),
                ("dijkstra_gt", "Dijkstra (GT map)", "GT map", "--"),

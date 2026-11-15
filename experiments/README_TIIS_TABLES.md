@@ -34,7 +34,7 @@ SCENES="indoor_000 ... indoor_009" TRIALS=5 nohup ./experiments/run_tables.sh &
 | 3 | 모든 경로를 DIAL-MPC로 실행 | `experiments/run_dial.py` | GPU, 가장 김 |
 | 4 | 지표 계산 → LaTeX 표 | `analysis/evaluate_all.py`, `make_tables.py` | CPU |
 
-환경변수: `GEMINI_MODEL`(기본 gemini-2.5-pro), `IMAGE_MODE`(coord | all), `WORKERS`(동시 시행 수), `STAGES`("0 1 2 3 4" 중 일부).
+환경변수: `GEMINI_MODEL`(기본 gemini-2.5-pro), `IMAGE_MODE`(기본 all: 모든 agent가 이미지), `COORD_ABLATION`(기본 1: C2~C4를 Coordinate만 이미지를 보는 설정으로 한 번 더, 결과 *_coord), `WORKERS`(동시 시행 수), `STAGES`("0 1 2 3 4" 중 일부).
 
 **씬 생성 직후 확인할 것**: `data/<씬>/align_check.png` (GT 점유가 빨갛게 가구·벽 위에 정확히 겹치는지), `data/<씬>/scene_meta.json`의 `warnings`.
 
