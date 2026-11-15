@@ -9,10 +9,14 @@
         <default class="go2">
             <geom friction="0.6" margin="0.001" condim="1" />
             <joint axis="0 1 0" damping="0.65" armature="0.01" />
+            <!-- [P0] 관절별 토크 한계 복구 (Unitree Go2 사양 / MuJoCo Menagerie 값).
+                 이전에는 ctrlrange가 없어 brax가 ±inf로 처리 → act2tau clip 무효였음. -->
             <default class="abduction">
                 <joint axis="1 0 0" range="-1.0472 1.0472" />
+                <motor ctrlrange="-23.7 23.7" />
             </default>
             <default class="hip">
+                <motor ctrlrange="-23.7 23.7" />
                 <default class="front_hip">
                     <joint range="-1.5708 3.4907" />
                 </default>
@@ -22,6 +26,7 @@
             </default>
             <default class="knee">
                 <joint range="-2.7227 -0.83776" />
+                <motor ctrlrange="-45.43 45.43" />
             </default>
             <default class="visual">
                 <geom type="mesh" contype="0" conaffinity="0" group="2" />
