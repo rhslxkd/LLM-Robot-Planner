@@ -44,3 +44,8 @@ nohup.out
 # Paper (drafted locally, not tracked in this branch)
 paper/
 data/
+# indoor pipeline: Unity/synthetic exports and generated synthetic scenes
+Go2Export/
+data/synthetic_*/
+dial_mpc/dial_mpc/models/unitree_go2/synthetic_*.xml
+dial_mpc/dial_mpc/examples/synthetic_*.yaml
