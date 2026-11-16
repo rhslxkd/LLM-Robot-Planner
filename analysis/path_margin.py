@@ -61,7 +61,9 @@ def main():
         grid = OccGrid.load(os.path.join(sd_dir, "occupancy.npz"))
         goal = json.load(open(os.path.join(sd_dir, "scene_meta.json")))["goal"]
         sdf = signed_field(grid)
-        for rule, pat in (("1.6m", "_pilot_1.6m/C*/trial_*"), ("current", "C*/trial_*")):
+        rules = [(os.path.basename(p).replace("_pilot_", ""), os.path.basename(p) + "/C*/trial_*")
+                 for p in sorted(glob.glob(os.path.join(sd_dir, "_pilot_*")))] + [("current", "C*/trial_*")]
+        for rule, pat in rules:
             for d in sorted(glob.glob(os.path.join(sd_dir, pat))):
                 pj = os.path.join(d, "last_judged_path.json")
                 if not os.path.exists(pj):

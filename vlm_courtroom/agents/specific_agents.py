@@ -12,7 +12,8 @@ from vlm_courtroom.agents.base_agent import VLMAgent, Message
 #                   개발용 씬 파일럿에서 경로 중심선이 장애물 쪽으로 빗나간 거리(analysis/path_margin.py)로 정함.
 #                   0.8 m 규칙만 준 파일럿에서 C4 유효 경로 0/4 → 이 여유를 따로 둔다.
 BODY_HALF_WIDTH_M = 0.175          # go2.xml 충돌 geom 폭 0.35 m의 절반
-PERCEPTION_MARGIN_M = 0.40         # 이미지 좌표 추정 오차 여유 (path_margin.py 측정값으로 갱신)
+# 개발용 씬 파일럿 32+32 시행에서 몸통 반폭을 확보하기 위한 부족분: 중앙값 0.28 m, p90 0.42 m(1.6 m 규칙) / 0.53 m(0.8 m 규칙)
+PERCEPTION_MARGIN_M = 0.45         # 이미지 좌표 추정 오차 여유 (두 p90 사이)
 CENTERLINE_CLEARANCE_M = round(BODY_HALF_WIDTH_M + PERCEPTION_MARGIN_M, 2)
 PLANNING_GAP_M = round(2 * CENTERLINE_CLEARANCE_M, 2)
 
