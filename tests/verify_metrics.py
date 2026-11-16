@@ -65,13 +65,13 @@ def exact_swept(poly: np.ndarray):
     return unary_union(parts)
 
 
-def random_grid(rng, n_obs=6, size=(80, 80), res=0.05):
+def random_grid(rng, n_obs=6, size=(80, 80), res=0.05, origin=(0.0, 0.0)):
     occ = np.zeros(size, bool)
     for _ in range(n_obs):
         h, w = rng.integers(3, 18, 2)
         r, c = rng.integers(0, size[0] - h), rng.integers(0, size[1] - w)
         occ[r:r + h, c:c + w] = True
-    return pm.OccGrid(occ, res, (0.0, 0.0))
+    return pm.OccGrid(occ, res, origin)
 
 
 def _penetration(sw, obs):
@@ -91,11 +91,11 @@ def check_bev(n_cases, rng):
     agree = 0
     missed, false_alarm, n_col = [], [], 0
     for _ in range(n_cases):
-        g = random_grid(rng, n_obs=3, size=(120, 120))
-        poly = rng.uniform(0.8, 5.2, (rng.integers(2, 6), 2))
+        g = random_grid(rng, n_obs=3, size=(120, 120), origin=(-3.0, -3.0))   # 로봇 출발점 (0,0)이 지도 가운데
+        poly = rng.uniform(-2.2, 2.2, (rng.integers(2, 6), 2))
         ours = pm.evaluate_path(poly, g, poly[-1])["bev_collision"]
         obs = occ_polygons(g)
-        sw = exact_swept(poly)
+        sw = exact_swept(np.vstack([[0.0, 0.0], poly]))     # 기준: 원점 → 첫 waypoint 구간까지 포함
         exact = sw.intersection(obs).area > 1e-10
         n_col += exact
         if ours == exact:

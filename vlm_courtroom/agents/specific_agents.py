@@ -5,7 +5,18 @@ from vlm_courtroom.agents.base_agent import VLMAgent, Message
 
 # 4개 agent가 공유하는 물리 제약 블록. 씬 파라미터(clearance, margin 등)가 바뀌면
 # 여기 한 곳만 고치면 Coordinate/Prosecutor/Defense/Judge 전부에 일괄 반영된다.
-ROBOT_PHYSICAL_CONSTRAINTS = """
+#
+# 두 숫자는 출처가 다르다.
+#   0.8 m           로봇 물리 한계. DIAL-MPC 복도 폭 테스트로 측정.
+#   PERCEPTION_...  VLM이 이미지에서 좌표를 읽을 때의 오차를 흡수하는 여유.
+#                   개발용 씬 파일럿에서 경로 중심선이 장애물 쪽으로 빗나간 거리(analysis/path_margin.py)로 정함.
+#                   0.8 m 규칙만 준 파일럿에서 C4 유효 경로 0/4 → 이 여유를 따로 둔다.
+BODY_HALF_WIDTH_M = 0.175          # go2.xml 충돌 geom 폭 0.35 m의 절반
+PERCEPTION_MARGIN_M = 0.40         # 이미지 좌표 추정 오차 여유 (path_margin.py 측정값으로 갱신)
+CENTERLINE_CLEARANCE_M = round(BODY_HALF_WIDTH_M + PERCEPTION_MARGIN_M, 2)
+PLANNING_GAP_M = round(2 * CENTERLINE_CLEARANCE_M, 2)
+
+ROBOT_PHYSICAL_CONSTRAINTS = f"""
         ### [CRITICAL: Robot Physical Constraints - Unitree Go2]
         You MUST adhere to the following physical constraints for path planning:
 
@@ -18,8 +29,8 @@ ROBOT_PHYSICAL_CONSTRAINTS = """
              collision shapes.
            - Do NOT derive your own required corridor width from this footprint
              (e.g. "radius r, so a gap of 2r is needed"). The only authoritative
-             minimum passable gap is the 0.8m figure in Section 2 below, which was
-             measured by executing the robot in simulation.
+             clearance rules are Sections 2 and 2b below (0.8m physical limit measured
+             by executing the robot in simulation, plus a perception buffer).
 
         2. **Safety Protocol** (measured with DIAL-MPC, Unitree Go2 trot gait):
            - In a corridor-width stress test on a straight centered path, each foot
@@ -27,13 +38,20 @@ ROBOT_PHYSICAL_CONSTRAINTS = """
              walls but the robot stays upright down to a 0.40-0.55m gap, and it
              falls at a 0.35m gap. A corridor of 0.63-0.98m combined with a sharp
              turn inside it also caused a fall.
-           - Therefore: if a gap between obstacles is narrower than **0.8m**, it is
-             UNPASSABLE. Do not attempt to go through.
-           - This 0.8m already includes the safety buffer. Do NOT add another margin
-             on top of it: a gap of 0.8m or wider is PASSABLE, and a gap that is only
-             slightly wider than 0.8m is not grounds for rejection.
-           - Keep the path centered in any gap, and avoid sharp turns inside narrow
-             gaps.
+           - Therefore the robot PHYSICALLY cannot pass a gap narrower than **0.8m**.
+
+        2b. **Perception Buffer** (your coordinates are estimates read from an image):
+           - Coordinates you read off the image are not exact. In pilot runs where
+             paths were planned right up to the 0.8m physical limit, most paths
+             drifted into furniture and were invalid.
+           - Therefore keep the path centerline at least **{CENTERLINE_CLEARANCE_M}m** away from
+             every obstacle edge visible in the image ({BODY_HALF_WIDTH_M}m body half-width
+             + {PERCEPTION_MARGIN_M}m perception buffer).
+           - Plan only through gaps that look at least **{PLANNING_GAP_M}m** wide in the image,
+             and keep the path centered in them. When a wider detour exists, prefer it.
+           - These numbers are fixed. Do NOT derive your own, and do NOT lower them to
+             make a path fit. If no route satisfies them, say so explicitly.
+           - Avoid sharp turns inside narrow gaps.
 
         3. **Locomotion Constraints**:
            - Sequential Waypoint Distance (Step Length):
@@ -169,8 +187,8 @@ class ProsecutorAgent(VLMAgent):
         Review the proposed path: {previous_proposal}
         {ROBOT_PHYSICAL_CONSTRAINTS}
         Your goal is to find faults or risks using the constraints above as evidence
-        (e.g., "the gap near waypoint 3 is only 0.6m wide, which violates the 0.8m
-        minimum passable width" or "the turn between waypoint 5 and 6 exceeds the
+        (e.g., "waypoint 3 is only about 0.3m from the table edge, which violates the
+        {CENTERLINE_CLEARANCE_M}m centerline clearance" or "the turn between waypoint 5 and 6 exceeds the
         safe turning radius"). Do not rely on vague impressions -- cite specific
         waypoints and, where possible, estimated distances against the constraints.
         Provide:
@@ -200,7 +218,8 @@ class DefenseAttorneyAgent(VLMAgent):
         Counter the prosecution's argument: {prosecution_arg}
         {ROBOT_PHYSICAL_CONSTRAINTS}
         When countering, use the constraints above to show the path actually satisfies
-        them (e.g., "the flagged gap is in fact 1.0m wide, above the 0.8m minimum") --
+        them (e.g., "waypoint 3 is in fact about 0.8m from the table edge, above the
+        {CENTERLINE_CLEARANCE_M}m clearance") --
         do not simply assert efficiency without checking the prosecution's specific claim
         against these numbers first. If the prosecution's safety concern is valid, concede
         it and argue for a minimal correction instead of blanket disagreement.

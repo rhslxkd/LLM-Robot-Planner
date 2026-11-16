@@ -35,8 +35,10 @@ class UnitreeGo2EnvConfig(BaseEnvConfig): # 이건 dataclass BaseEnvConfig를 �
     gait: str = "trot" # 로봇의 보행 패턴 설정
     scene_xml: str = "mjx_scene_force.xml" # 로드할 씬 XML (오라클 씬 배선용, 기본값은 기존 동작 유지)
     vlm_path_json: Union[str, None] = None # VLM 경로 JSON 경로. None이면 기존 하드코딩 폴백 경로 사용
-    # yaw 보상의 목표: "fixed" = 출발 방향 유지(기존 동작), "segment" = 현재 구간의 진행 방향
-    yaw_target_mode: str = "fixed"
+    # yaw 보상의 목표: "fixed" = 출발 방향 유지(이전 동작), "segment" = 현재 구간의 진행 방향
+    # 2026-11-16 결정 실험(results/controller_decision.md): segment가 옆걸음 평균을 10.7~17.6° → 3.4~5.1°로 줄이고
+    # 성공·도달 시간은 같음 → 기본값 segment
+    yaw_target_mode: str = "segment"
 
 
 class UnitreeGo2Env(BaseEnv):

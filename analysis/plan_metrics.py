@@ -134,6 +134,10 @@ def evaluate_path(path, grid: OccGrid, goal_xy, goal_radius: float = GOAL_RADIUS
                 "min_clearance_m": float("nan"), "n_waypoints": 0, "path_len_m": float("nan"),
                 "sharp_turns": 0, "collision_arclen_m": float("nan")}
     goal_xy = np.asarray(goal_xy, float)
+    # 로봇은 (0,0)에서 출발해 첫 waypoint로 걸어간다 (env는 원점을 경로에 넣지 않으므로 그 구간도 여기서 검사)
+    n_wp = int(len(poly))
+    if np.linalg.norm(poly[0]) > 1e-6:
+        poly = np.vstack([[0.0, 0.0], poly])
     pts, heads = densify(poly)
     fp = _footprint_offsets(grid.res)
     c, s = np.cos(heads), np.sin(heads)
@@ -162,7 +166,7 @@ def evaluate_path(path, grid: OccGrid, goal_xy, goal_radius: float = GOAL_RADIUS
         "bev_collision": collision,
         "valid": bool(reaches and not collision),
         "min_clearance_m": min_clear,
-        "n_waypoints": int(len(poly)),
+        "n_waypoints": n_wp,
         "path_len_m": float(arclen[-1]),
         "sharp_turns": int(len(sharp)),
         "collision_arclen_m": float(arclen[np.argmax(hit_rect)]) if hit_rect.any() else float("nan"),
