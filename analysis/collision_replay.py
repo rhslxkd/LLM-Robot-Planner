@@ -34,7 +34,9 @@ def _scene_text_with_full_collision(scene_xml_path: str) -> str:
     pat = re.compile(r'<include\s+file="' + re.escape(SIM_ROBOT_XML) + r'"\s*/>')
     if not pat.search(txt):
         raise ValueError(f"{scene_xml_path}: '{SIM_ROBOT_XML}' include를 찾을 수 없음")
-    return pat.sub(f'<include file="{REPLAY_ROBOT_XML}"/>', txt)
+    txt = pat.sub(f'<include file="{REPLAY_ROBOT_XML}"/>', txt)
+    # 제어기용으로 충돌을 꺼 둔 장애물(obs_*)을 재생에서는 다시 충돌 대상으로
+    return re.sub(r'(<geom name="obs_\d+"[^>]*?)\s+contype="0"\s+conaffinity="0"', r'\1', txt)
 
 
 @lru_cache(maxsize=32)

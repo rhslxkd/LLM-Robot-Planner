@@ -131,9 +131,14 @@ def mujoco_xml(scene: str, grid: OccGrid) -> tuple[str, int]:
         cx = grid.origin[0] + (c + (w - 1) / 2) * grid.res
         cy = grid.origin[1] + (r + (h - 1) / 2) * grid.res
         geoms.append(f'    <geom name="obs_{i}" type="box" pos="{cx:.4f} {cy:.4f} {BOX_HEIGHT_M / 2:.3f}" '
-                     f'size="{w * grid.res / 2:.4f} {h * grid.res / 2:.4f} {BOX_HEIGHT_M / 2:.3f}" material="obstacle"/>')
+                     f'size="{w * grid.res / 2:.4f} {h * grid.res / 2:.4f} {BOX_HEIGHT_M / 2:.3f}" material="obstacle" '
+                     f'contype="0" conaffinity="0"/>')
     xml = f"""<mujoco model="go2 indoor {scene}">
-  <!-- indoor/build_scene.py 자동 생성. 장애물 = GT 점유 지도(data/{scene}/occupancy.npz)의 직사각형 병합 -->
+  <!-- indoor/build_scene.py 자동 생성. 장애물 = GT 점유 지도(data/{scene}/occupancy.npz)의 직사각형 병합.
+       장애물은 제어기 시뮬레이션에서 충돌하지 않는다(contype=conaffinity=0). DIAL-MPC의 보상에는 장애물 항이 없어
+       회피는 전적으로 웨이포인트가 결정하고, 충돌은 analysis/collision_replay.py가 전신 충돌 모델로 재생해 판정한다.
+       MJX는 broadphase 없이 모든 geom 쌍의 접촉을 미리 할당하므로, 실제 스캔 씬(장애물 200~400개)에서
+       발–장애물 접촉을 켜 두면 2048 샘플에서 GPU 메모리(16 GB)를 넘는다. -->
   <include file="mjx_go2_robot_only.xml"/>
 
   <statistic center="0 0 0.1" extent="0.8"/>
