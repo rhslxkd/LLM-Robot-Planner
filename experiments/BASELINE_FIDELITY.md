@@ -110,3 +110,17 @@ python tests/replicate_llmastar_benchmark.py --dataset /tmp/llm-astar/dataset/en
 
 ## 6. 논문용 문장 (Implementation details)
 > **Baselines.** A\* and Dijkstra run on an 8-connected occupancy grid (0.05 m) with unit and √2 step costs, corner cutting disallowed, and obstacles inflated by 0.441 m (the circumscribed radius of the Go2 footprint plus a 0.05 m margin); A\* uses the octile heuristic. Their optimal costs matched an independent Dijkstra implementation (NetworkX) on all 500 randomly generated test maps. Grid paths are post-processed by line-of-sight shortcutting with exact cell traversal [Amanatides & Woo]. RRT\* uses 4,000 iterations, a 0.5 m extension step, a fixed 1.0 m rewiring radius, and the same collision checker. For LLM-A\* [Meng et al.], we use the authors' released implementation (llm-astar 0.1.4) unchanged, including its search procedure and five-shot prompt, and only replace the language model with Gemini 2.5 Pro at temperature 0 for parity with our method. Our occupancy maps are converted to the barrier-segment format of LLM-A\* on a 0.2 m lattice after the same inflation. On all 1,000 queries of the original LLM-A\* benchmark, our wrapper produced prompts, search statistics, and paths identical to the unmodified implementation given the same model responses.
+
+## 평가 지표 검증 (`tests/verify_metrics.py`)
+| 지표 | 대조 대상 | 결과 |
+|---|---|---|
+| BEV 충돌 (Go2 0.70×0.35 m 직사각형 sweep + 급회전 원) | shapely 정확 기하 (구간별 convex hull ∪ 원) vs 점유 셀 | 1,500 사례 (정확한 충돌 731) 중 1,499 일치. 오경보 0. 놓친 충돌 1건, 침투 1.9 cm (샘플 간격 2.5 cm 미만) |
+| 목표 도달 (0.3 m) | 직접 계산 | 0.29 m 도달, 0.31 m 미도달 |
+| 기울기 | scipy Rotation (몸통 z축–세계 z축 각) | 2,000 자세, 최대 오차 1e-12° |
+| 경로 이탈 (점–폴리라인 거리) | shapely distance | 300 사례, 최대 오차 3e-15 m |
+| homotopy (H-signature) | 손 사례: 장애물 위/아래, 같은 쪽 두 경로, 한 바퀴 감기 | 같은 쪽 = 같음, 반대쪽 = 다름, 감기 = 별도 |
+| 토크 포화 (≥ 0.99 × 한계) | 손으로 만든 ctrl | 기대값과 일치, 한계 순서 abduction/thigh/calf |
+| 전신 충돌 재생 | 출발 자세 / 장애물 안에 놓은 자세 | 충돌 없음 / 충돌 |
+
+검증 중 고친 것: 꺾이는 지점에서 직전 구간 자세의 몸체가 샘플링에서 빠져 최대 2.7 cm 침투를 놓치던 문제 → 구간 끝점을 그 구간의 heading으로도 샘플링.
+남은 근사: 점 샘플링 간격(2.5 cm)보다 얕은 겹침은 놓칠 수 있다. 실행 충돌 판정의 허용 침투(1 cm)와 같은 크기다.

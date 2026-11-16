@@ -90,9 +90,10 @@ def densify(poly: np.ndarray, step: float = SAMPLE_STEP_M) -> tuple[np.ndarray, 
     for a, b in zip(poly[:-1], poly[1:]):
         L = float(np.linalg.norm(b - a))
         n = max(int(np.ceil(L / step)), 1)
-        t = np.linspace(0, 1, n, endpoint=False)[:, None]
+        # 구간 끝점도 그 구간의 heading으로 넣는다 (꺾이는 지점에서 직전 자세의 몸체가 빠지지 않게)
+        t = np.linspace(0, 1, n + 1)[:, None]
         pts.append(a + t * (b - a))
-        heads.append(np.full(n, np.arctan2(b[1] - a[1], b[0] - a[0]) if L > 1e-9 else 0.0))
+        heads.append(np.full(n + 1, np.arctan2(b[1] - a[1], b[0] - a[0]) if L > 1e-9 else 0.0))
     pts.append(poly[-1:]); heads.append(heads[-1][-1:] if heads else np.zeros(1))
     return np.concatenate(pts), np.concatenate(heads)
 
