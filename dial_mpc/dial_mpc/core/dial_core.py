@@ -229,6 +229,8 @@ def main():
         help="YAML의 n_steps(rollout 길이)를 덮어쓴다. 실내 씬처럼 경로 길이가 시행마다 다를 때 "
              "경로길이/순항속도로 계산한 값을 넘긴다 (experiments/run_dial.py가 자동 계산).",
     )
+    parser.add_argument("--no-serve", action="store_true",
+                        help="결과(states/HTML)를 저장한 뒤 Flask 뷰어 서버를 띄우지 않고 바로 종료 (배치 실행용).")
     parser.add_argument("--seed", type=int, default=None, help="YAML의 seed를 덮어쓴다 (제어기 샘플링 난수).")
     parser.add_argument("--yaw-target-mode", type=str, default=None, choices=["fixed", "segment"],
                         help="yaw 보상의 목표: fixed = 출발 방향 유지(기존), segment = 현재 구간 진행 방향.")
@@ -386,6 +388,10 @@ def main():
     xdata = jnp.array(xdata)
     jnp.save(os.path.join(dial_config.output_dir, f"{timestamp}_states"), data)
     jnp.save(os.path.join(dial_config.output_dir, f"{timestamp}_predictions"), xdata)
+
+    if args.no_serve:
+        print("✅ saved (no-serve): exiting without the web viewer")
+        return
 
     @app.route("/")
     def index():

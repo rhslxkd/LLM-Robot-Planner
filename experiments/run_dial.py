@@ -56,7 +56,8 @@ def run_one(scene, d, pj, python=sys.executable):
     n_steps = n_steps_for(path_length(path))
     timeout = JIT_OVERHEAD_S + int(SEC_PER_STEP * n_steps)
     cmd = [python, "dial_mpc/dial_mpc/core/dial_core.py", "--example", scene,
-           "--vlm-path-json", os.path.abspath(pj), "--output-dir", os.path.abspath(d), "--n-steps", str(n_steps)]
+           "--vlm-path-json", os.path.abspath(pj), "--output-dir", os.path.abspath(d), "--n-steps", str(n_steps),
+           "--no-serve"]
     env = {**os.environ, "XLA_PYTHON_CLIENT_PREALLOCATE": "false"}
     t0 = time.perf_counter()
     with open(os.path.join(d, "dial.log"), "w") as log:

@@ -57,7 +57,8 @@ def run_variant(scene, trial_dir, variant, seed, yaw_mode):
         return out, "cached"
     n_steps = n_steps_for(path_length(json.load(open(pj))))
     cmd = [sys.executable, "dial_mpc/dial_mpc/core/dial_core.py", "--example", scene, "--vlm-path-json", pj,
-           "--output-dir", out, "--n-steps", str(n_steps), "--seed", str(seed), "--yaw-target-mode", yaw_mode]
+           "--output-dir", out, "--n-steps", str(n_steps), "--seed", str(seed), "--yaw-target-mode", yaw_mode,
+           "--no-serve"]
     env = {**os.environ, "XLA_PYTHON_CLIENT_PREALLOCATE": "false",
            "PYTHONPATH": os.path.join(REPO, "dial_mpc") + os.pathsep + REPO + os.pathsep + os.environ.get("PYTHONPATH", "")}
     t0 = time.perf_counter()
