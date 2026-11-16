@@ -35,6 +35,8 @@ class UnitreeGo2EnvConfig(BaseEnvConfig): # 이건 dataclass BaseEnvConfig를 �
     gait: str = "trot" # 로봇의 보행 패턴 설정
     scene_xml: str = "mjx_scene_force.xml" # 로드할 씬 XML (오라클 씬 배선용, 기본값은 기존 동작 유지)
     vlm_path_json: Union[str, None] = None # VLM 경로 JSON 경로. None이면 기존 하드코딩 폴백 경로 사용
+    # yaw 보상의 목표: "fixed" = 출발 방향 유지(기존 동작), "segment" = 현재 구간의 진행 방향
+    yaw_target_mode: str = "fixed"
 
 
 class UnitreeGo2Env(BaseEnv):
@@ -303,10 +305,14 @@ class UnitreeGo2Env(BaseEnv):
         vec = math.rotate(vec_tar, x.rot[0])
         reward_upright = -jnp.sum(jnp.square(vec - vec_tar))
         # yaw orientation reward
-        yaw_tar = (
-            state.info["yaw_tar"]
-            + state.info["ang_vel_tar"][2] * self.dt * state.info["step"]
-        )
+        if self._config.yaw_target_mode == "segment":
+            seg_dir = path[idx_high, :2] - path[idx_low, :2]
+            yaw_tar = jnp.arctan2(seg_dir[1], seg_dir[0])
+        else:
+            yaw_tar = (
+                state.info["yaw_tar"]
+                + state.info["ang_vel_tar"][2] * self.dt * state.info["step"]
+            )
         yaw = math.quat_to_euler(x.rot[self._torso_idx - 1])[2]
         d_yaw = yaw - yaw_tar
         reward_yaw = -jnp.square(jnp.atan2(jnp.sin(d_yaw), jnp.cos(d_yaw)))

@@ -229,6 +229,9 @@ def main():
         help="YAML의 n_steps(rollout 길이)를 덮어쓴다. 실내 씬처럼 경로 길이가 시행마다 다를 때 "
              "경로길이/순항속도로 계산한 값을 넘긴다 (experiments/run_dial.py가 자동 계산).",
     )
+    parser.add_argument("--seed", type=int, default=None, help="YAML의 seed를 덮어쓴다 (제어기 샘플링 난수).")
+    parser.add_argument("--yaw-target-mode", type=str, default=None, choices=["fixed", "segment"],
+                        help="yaw 보상의 목표: fixed = 출발 방향 유지(기존), segment = 현재 구간 진행 방향.")
     args = parser.parse_args()
     
     if args.example is None and args.config is None:
@@ -260,6 +263,8 @@ def main():
     dial_config.output_dir = resolve_output_dir(dial_config.output_dir)
     if args.n_steps is not None:
         dial_config.n_steps = args.n_steps
+    if args.seed is not None:
+        dial_config.seed = args.seed
     rng = jax.random.PRNGKey(seed=dial_config.seed)
 
     # find env config
@@ -270,6 +275,8 @@ def main():
     # CLI로 vlm_path_json을 넘겼으면 YAML 값보다 우선한다 (같은 이유).
     if args.vlm_path_json is not None:
         env_config.vlm_path_json = args.vlm_path_json
+    if args.yaw_target_mode is not None:
+        env_config.yaw_target_mode = args.yaw_target_mode
 
     print(emoji.emojize(":rocket:") + "Creating environment")
     env = brax_envs.get_environment(dial_config.env_name, config=env_config)
