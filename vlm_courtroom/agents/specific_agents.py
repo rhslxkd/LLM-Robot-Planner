@@ -16,21 +16,24 @@ ROBOT_PHYSICAL_CONSTRAINTS = """
              commonly-cited Unitree marketing spec (0.7m x 0.31m), which includes
              fully outstretched legs; the values above reflect the actual simulated
              collision shapes.
-           - Dynamic Clearance: Consider the robot as a cylinder with a **0.5m radius**.
-             This fully circumscribes the measured footprint even at 45-degree yaw
-             (worst-case half-diagonal is 0.26m) and adds margin for gait sway during
-             trotting, which is not captured by the static collision geometry above.
+           - Do NOT derive your own required corridor width from this footprint
+             (e.g. "radius r, so a gap of 2r is needed"). The only authoritative
+             minimum passable gap is the 0.8m figure in Section 2 below, which was
+             measured by executing the robot in simulation.
 
-        2. **Safety Protocol**:
-           - Maintain a minimum **Safety Margin of 0.3m** from any detected obstacle
-             (puddles, objects, curbs).
-             (Note: this margin is ON TOP OF the 0.5m dynamic clearance radius above,
-             which already accounts for the robot's physical footprint and gait sway.
-             The margin itself only needs to cover residual uncertainty, so do not
-             treat it as an additional large buffer.)
-           - If a gap between obstacles is narrower than **1.6m** (2 x effective
-             clearance radius of 0.8m), it is considered UNPASSABLE. Do not attempt
-             to go through.
+        2. **Safety Protocol** (measured with DIAL-MPC, Unitree Go2 trot gait):
+           - In a corridor-width stress test on a straight centered path, each foot
+             swings up to ~0.28m sideways from the path centerline. Feet brush the
+             walls but the robot stays upright down to a 0.40-0.55m gap, and it
+             falls at a 0.35m gap. A corridor of 0.63-0.98m combined with a sharp
+             turn inside it also caused a fall.
+           - Therefore: if a gap between obstacles is narrower than **0.8m**, it is
+             UNPASSABLE. Do not attempt to go through.
+           - This 0.8m already includes the safety buffer. Do NOT add another margin
+             on top of it: a gap of 0.8m or wider is PASSABLE, and a gap that is only
+             slightly wider than 0.8m is not grounds for rejection.
+           - Keep the path centered in any gap, and avoid sharp turns inside narrow
+             gaps.
 
         3. **Locomotion Constraints**:
            - Sequential Waypoint Distance (Step Length):
@@ -166,7 +169,7 @@ class ProsecutorAgent(VLMAgent):
         Review the proposed path: {previous_proposal}
         {ROBOT_PHYSICAL_CONSTRAINTS}
         Your goal is to find faults or risks using the constraints above as evidence
-        (e.g., "the gap near waypoint 3 is only 1.2m wide, which violates the 1.6m
+        (e.g., "the gap near waypoint 3 is only 0.6m wide, which violates the 0.8m
         minimum passable width" or "the turn between waypoint 5 and 6 exceeds the
         safe turning radius"). Do not rely on vague impressions -- cite specific
         waypoints and, where possible, estimated distances against the constraints.
@@ -197,7 +200,7 @@ class DefenseAttorneyAgent(VLMAgent):
         Counter the prosecution's argument: {prosecution_arg}
         {ROBOT_PHYSICAL_CONSTRAINTS}
         When countering, use the constraints above to show the path actually satisfies
-        them (e.g., "the flagged gap is in fact 1.8m wide, above the 1.6m minimum") --
+        them (e.g., "the flagged gap is in fact 1.0m wide, above the 0.8m minimum") --
         do not simply assert efficiency without checking the prosecution's specific claim
         against these numbers first. If the prosecution's safety concern is valid, concede
         it and argue for a minimal correction instead of blanket disagreement.
