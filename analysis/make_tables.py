@@ -115,13 +115,35 @@ def table2(trials, groups) -> tuple[str, str]:
     return tex, "\n".join(md)
 
 
+TABLE3_ROWS = [("C4", "Gemini 2.5 Pro"), ("C4_flash", "Gemini 2.5 Flash"),
+               ("C4_qwen25vl", "Qwen2.5-VL-7B (local)"), ("C4_llavallama3", "LLaVA-Llama3-8B (local)")]
+
+
+def table3(trials, groups) -> tuple[str, str]:
+    cols = [("output_ok", "Output OK (\\%) $\\uparrow$"), ("valid", "Valid path (\\%) $\\uparrow$"),
+            ("homotopy", "Homotopy $\\uparrow$"), ("sr", "SR (\\%) $\\uparrow$"), ("plan_time", "Plan time (s)")]
+    body, md = [], ["| Backbone | n | " + " | ".join(c[1].replace("\\%", "%").replace("$\\uparrow$", "↑") for c in cols) + " |",
+                    "|" + "---|" * (len(cols) + 2)]
+    for key, label in TABLE3_ROWS:
+        if key not in set(trials.method):
+            continue
+        s = summarize(trials, groups, key)
+        body.append(f"{label} & " + " & ".join(s[c] for c, _ in cols) + " \\\\")
+        md.append(f"| {label} | {s['n']} | " + " | ".join(s[c].replace(' $\\pm$ ', ' ± ') for c, _ in cols) + " |")
+    tex = ("\\begin{table}[t]\n\\centering\n\\caption{Full courtroom (C4) with different VLM backbones on the same "
+           "evaluation pairs.}\n\\label{tab:backbones}\n\\begin{tabular}{l" + "c" * len(cols) + "}\n\\toprule\n"
+           "Backbone & " + " & ".join(c[1] for c in cols) + " \\\\\n\\midrule\n" + "\n".join(body) +
+           "\n\\bottomrule\n\\end{tabular}\n\\end{table}\n")
+    return tex, "\n".join(md)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results", default="results")
     a = ap.parse_args()
     trials = pd.read_csv(os.path.join(a.results, "trials.csv"))
     groups = pd.read_csv(os.path.join(a.results, "groups.csv"))
-    for name, fn in (("table1_ablation", table1), ("table2_comparison", table2)):
+    for name, fn in (("table1_ablation", table1), ("table2_comparison", table2), ("table3_backbones", table3)):
         tex, md = fn(trials, groups)
         open(os.path.join(a.results, f"{name}.tex"), "w").write(tex)
         open(os.path.join(a.results, f"{name}.md"), "w").write(md + "\n")
