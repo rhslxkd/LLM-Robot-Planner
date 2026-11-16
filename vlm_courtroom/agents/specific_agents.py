@@ -52,6 +52,13 @@ ROBOT_PHYSICAL_CONSTRAINTS = f"""
              and keep the path centered in them. When a wider detour exists, prefer it.
            - These numbers are fixed. Do NOT derive your own, and do NOT lower them to
              make a path fit. If no route satisfies them, say so explicitly.
+           - They are MINIMUMS, not targets. Do not place the path exactly at the
+             clearance limit; place it in the middle of the free space.
+           - When a distance read from the image is uncertain, assume the obstacle is
+             CLOSER and the gap NARROWER. Never assume a gap is wide enough just so
+             that it meets the rule.
+           - Tables, desks and countertops count as obstacles even when their tops look
+             similar in color to the floor from above; the robot cannot pass under them.
            - Avoid sharp turns inside narrow gaps.
 
         3. **Locomotion Constraints**:
@@ -92,7 +99,7 @@ class CoordinateAgent(VLMAgent):
         prompt = f"""
         You are a robot navigation assistant. 
         Analyze the scene (image or description provided): {image_description}
-        Identify obstacles (e.g., puddles, cars).
+        Identify every obstacle: walls, furniture, tables, desks, countertops, plants, etc.
         {ROBOT_PHYSICAL_CONSTRAINTS}
         Task:
         1. Analyze the scene and Explain your path planning logic.
@@ -100,8 +107,13 @@ class CoordinateAgent(VLMAgent):
            This number ({num_waypoints}) is not optional -- the output list MUST contain exactly {num_waypoints} points.
         
         Output Format:
+        ## Obstacle Inventory
+        (List EVERY object in the image that the robot cannot walk through, including
+         tables, desks and countertops. For each: name, approximate center (x, y) and
+         size (length x width) in meters, in the robot frame described below.)
+
         ## Scene Analysis
-        (Explain obstacles and safe zones)
+        (Explain the free space and safe zones between the obstacles listed above)
         
         ## Path Strategy
         (Explain why you chose this path)
@@ -192,6 +204,9 @@ class ProsecutorAgent(VLMAgent):
         {CENTERLINE_CLEARANCE_M}m centerline clearance" or "the turn between waypoint 5 and 6 exceeds the
         safe turning radius"). Do not rely on vague impressions -- cite specific
         waypoints and, where possible, estimated distances against the constraints.
+        Check every straight segment between consecutive waypoints against every object
+        in the Obstacle Inventory and in the image, including tables and countertops,
+        and flag any segment that crosses or grazes one.
         Provide:
         1. One strong Opinion (Critical).
         2. Three Reasons (Evidence based on the physical constraints and safety).
@@ -258,7 +273,9 @@ class JudgeAgent(VLMAgent):
         2. Provide the FINAL list of EXACTLY {num_waypoints} coordinates (x, y) for the robot.
            This number ({num_waypoints}) is not optional -- your final JSON array MUST contain exactly {num_waypoints} points,
            even if you modify or reject the original proposal.
-        3. Explain how these points should be connected (mention Spline).
+        3. The robot walks in STRAIGHT lines between consecutive points (no spline).
+           Before finalizing, check every segment against every obstacle in the
+           Coordinate agent's Obstacle Inventory and in the image.
 
         Important: The coordinates MUST be provided as a JSON array at the end of your response.
         Example format:
