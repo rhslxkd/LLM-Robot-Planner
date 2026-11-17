@@ -8,6 +8,7 @@ run_table2_baselines.py ─ 표 ② 고전 베이스라인 실행 (계획 단계
   rrtstar_gt    RRT*     + GT 점유 지도   (seed = trial 번호 → 시행마다 다른 경로)
   rrtstar_seg   RRT*     + 이미지 분할 지도
   astarraw_gt   A*       + GT 지도, 경로 단축 없이 격자 경로 그대로 (부록·민감도용, --methods로 지정할 때만)
+  neuralastar_gt  Neural A* + GT 지도 (baselines/neural_astar_planner.py; torch·neural_astar 필요, --methods로 지정할 때만)
 
 결정적 방법(A*, Dijkstra)은 시행을 반복해도 경로가 같으므로 --det-trials(기본 1)만큼만 돌린다.
 
@@ -33,8 +34,10 @@ from baselines.grid_planners import DEFAULT_INFLATE_M, plan_grid, plan_rrtstar  
 from baselines.image_occupancy import occupancy_from_image  # noqa: E402
 from experiments.trial_io import clear_execution  # noqa: E402
 
-METHODS = ("astar_gt", "astar_seg", "dijkstra_gt", "rrtstar_gt", "rrtstar_seg", "astarraw_gt")
-DETERMINISTIC = {"astar_gt", "astar_seg", "dijkstra_gt", "astarraw_gt"}
+METHODS = ("astar_gt", "astar_seg", "dijkstra_gt", "rrtstar_gt", "rrtstar_seg", "astarraw_gt",
+           "neuralastar_gt", "neuralastar_seg")
+DETERMINISTIC = {"astar_gt", "astar_seg", "dijkstra_gt", "astarraw_gt", "neuralastar_gt", "neuralastar_seg"}
+NA_OPTS: dict = {}       # main()에서 --na-* 인자로 채움
 DEFAULT_METHODS = ("astar_gt", "astar_seg", "dijkstra_gt", "rrtstar_gt", "rrtstar_seg")   # astarraw_gt는 부록용 (요청 시)
 
 
@@ -85,7 +88,10 @@ def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: floa
             if os.path.exists(os.path.join(out, "meta.json")) and not force:
                 logs.append(f"{scene}/{method}/trial_{t:02d}: 이미 있음 (건너뜀, 다시 하려면 --force)")
                 continue
-            if algo in ("astar", "dijkstra", "astarraw"):
+            if algo == "neuralastar":
+                from baselines.neural_astar_planner import plan_neural_astar
+                r = plan_neural_astar(grid, goal, n, inflate_m=inflate_m, **NA_OPTS)
+            elif algo in ("astar", "dijkstra", "astarraw"):
                 r = plan_grid(grid, goal, n, method="dijkstra" if algo == "dijkstra" else "astar",
                               inflate_m=inflate_m, smoothing=(algo != "astarraw"))
             else:
@@ -103,7 +109,8 @@ def run_scene(scene: str, methods, trials: int, det_trials: int, inflate_m: floa
                     "inflate_m": inflate_m, "seg_tol": seg_tol if src == "seg" else None,
                     "seg_cell_agreement": agree if src == "seg" else None,
                     **{k: v for k, v in r.items() if k in ("expanded", "n_nodes", "reason", "seed", "smoothing",
-                                                           "raw_grid_len_m", "grid_cost_cells")}}
+                                                           "raw_grid_len_m", "grid_cost_cells", "ckpt", "cell_m",
+                                                           "mode", "window_cells")}}
             json.dump(meta, open(os.path.join(out, "meta.json"), "w"), indent=2)
             logs.append(f"{scene}/{method}/trial_{t:02d}: {'ok' if r['path'] is not None else '✗ ' + r.get('reason', '')}"
                         f" ({r['plan_time_s'] * 1000:.0f} ms)")
@@ -119,7 +126,11 @@ def main():
     ap.add_argument("--inflate", type=float, default=DEFAULT_INFLATE_M, help="장애물 팽창 반경 (m)")
     ap.add_argument("--seg-tol", type=float, default=28.0, help="이미지 분할 색 거리 허용치")
     ap.add_argument("--force", action="store_true", help="이미 계획된 시행도 다시 계획 (DIAL 결과는 삭제됨)")
+    ap.add_argument("--na-ckpt", default=None, help="Neural A* 체크포인트 폴더 (기본: neural-astar/model/mazes_032_moore_c8)")
+    ap.add_argument("--na-mode", default="pq", choices=["pq", "diff"], help="pq = 우선순위 큐 A* (큰 지도), diff = 미분 가능 A*")
+    ap.add_argument("--na-cell", type=float, default=0.10, help="Neural A* 격자 칸 크기 (m)")
     a = ap.parse_args()
+    NA_OPTS.update(mode=a.na_mode, cell_m=a.na_cell, **({"ckpt_dir": a.na_ckpt} if a.na_ckpt else {}))
     for s in a.scenes:
         for line in run_scene(s, a.methods, a.trials, a.det_trials, a.inflate, a.seg_tol, a.force):
             print(line)

@@ -23,12 +23,13 @@ sys.path.insert(0, REPO)
 from analysis.plan_metrics import OccGrid, evaluate_path, parse_path  # noqa: E402
 
 ORDER = ["C1", "C1xk", "C2", "C3", "C4", "C2_coord", "C3_coord", "C4_coord",
-         "astar_gt", "dijkstra_gt", "rrtstar_gt", "llmastar_gt", "astar_seg", "rrtstar_seg", "llmastar_seg", "astarraw_gt"]
+         "astar_gt", "dijkstra_gt", "rrtstar_gt", "llmastar_gt", "astar_seg", "rrtstar_seg", "llmastar_seg", "astarraw_gt", "neuralastar_gt"]
 LABEL = {"C1": "C1 Coordinate", "C1xk": "C1x4 (medoid)", "C2": "C2 +Prosecutor", "C3": "C3 +Defense",
          "C4": "C4 Courtroom (ours)", "C2_coord": "C2 (img: Coord only)", "C3_coord": "C3 (img: Coord only)",
          "C4_coord": "C4 (img: Coord only)", "astar_gt": "A* (GT map)", "dijkstra_gt": "Dijkstra (GT map)",
          "rrtstar_gt": "RRT* (GT map)", "llmastar_gt": "LLM-A* (GT map)", "astar_seg": "A* (segmented)",
-         "rrtstar_seg": "RRT* (segmented)", "llmastar_seg": "LLM-A* (segmented)", "astarraw_gt": "A* raw (GT map)"}
+         "rrtstar_seg": "RRT* (segmented)", "llmastar_seg": "LLM-A* (segmented)", "astarraw_gt": "A* raw (GT map)",
+         "neuralastar_gt": "Neural A* (GT map)"}
 
 
 def _font(size):
