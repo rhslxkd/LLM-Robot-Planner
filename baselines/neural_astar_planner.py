@@ -56,7 +56,11 @@ def load_model(ckpt_dir: str, mode: str = "pq", g_ratio: float = 0.5):
     if not files:
         raise FileNotFoundError(f"{ckpt_dir} 아래에 .ckpt 없음")
     ckpt = files[-1]
-    sd = torch.load(ckpt, map_location="cpu", weights_only=False)["state_dict"]
+    try:                                     # torch >= 1.13: weights_only 인자 필요(2.6부터 기본 True)
+        raw = torch.load(ckpt, map_location="cpu", weights_only=False)
+    except TypeError:                        # 옛 torch: 인자 없음
+        raw = torch.load(ckpt, map_location="cpu")
+    sd = raw["state_dict"]
     sd = {re.split("planner.", k)[-1]: v for k, v in sd.items() if "planner" in k}
     model = NeuralAstar(g_ratio=g_ratio, encoder_arch="CNN", use_differentiable_astar=(mode == "diff"))
     model.load_state_dict(sd)
